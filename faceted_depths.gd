@@ -823,6 +823,13 @@ var bottle_inventory: Dictionary = {}
 var has_life_jacket := false
 var life_jacket_on_ground := false
 var life_jacket_position := Vector2.ZERO
+var fishing_catcher_on_ground := false
+var fishing_catcher_position := Vector2.ZERO
+var has_sword := true
+var sword_on_ground := false
+var sword_position := Vector2.ZERO
+var drop_selected := 0
+var drop_gear_ids: Array = []
 var craft_selected := 0
 var pickup_selected := 0
 var recipe_index := 0
@@ -1080,6 +1087,11 @@ func load_level(index: int) -> void:
 	has_fishing_catcher = false
 	life_jacket_on_ground = false
 	life_jacket_position = Vector2.ZERO
+	fishing_catcher_on_ground = false
+	fishing_catcher_position = Vector2.ZERO
+	has_sword = true
+	sword_on_ground = false
+	sword_position = Vector2.ZERO
 	state = "playing"
 	if level_kind == "surface":
 		message = "Pick up gear with F • press B to craft"
@@ -1375,6 +1387,10 @@ func update_enemies(delta: float) -> void:
 
 func attack() -> void:
 	if state != "playing" or attack_cooldown > 0.0:
+		return
+	if not has_sword:
+		message = "You have no weapon — pick up your sword"
+		message_timer = 2.0
 		return
 	attack_cooldown = ATTACK_COOLDOWN
 	effects.append({
@@ -1806,27 +1822,94 @@ func build_selected() -> void:
 	add_shake(0.32)
 	_sfx("craft_build")
 
-func drop_life_jacket() -> void:
-	if state != "playing" or level_kind != "surface" or not has_life_jacket:
+const GEAR_IDS := ["life_jacket", "fishing_catcher", "sword"]
+
+func _gear_worn(id: String) -> bool:
+	match id:
+		"life_jacket":
+			return has_life_jacket
+		"fishing_catcher":
+			return has_fishing_catcher
+		"sword":
+			return has_sword
+	return false
+
+func _gear_on_ground(id: String) -> bool:
+	match id:
+		"life_jacket":
+			return life_jacket_on_ground
+		"fishing_catcher":
+			return fishing_catcher_on_ground
+		"sword":
+			return sword_on_ground
+	return false
+
+func _gear_position(id: String) -> Vector2:
+	match id:
+		"life_jacket":
+			return life_jacket_position
+		"fishing_catcher":
+			return fishing_catcher_position
+		"sword":
+			return sword_position
+	return Vector2.ZERO
+
+func _gear_label(id: String) -> String:
+	match id:
+		"life_jacket":
+			return "LIFE JACKET"
+		"fishing_catcher":
+			return "FISHING CATCHER"
+		"sword":
+			return "SWORD"
+	return id.to_upper()
+
+func _worn_gear_ids() -> Array:
+	var worn: Array = []
+	for id in GEAR_IDS:
+		if _gear_worn(String(id)):
+			worn.append(String(id))
+	return worn
+
+func _drop_gear(id: String) -> void:
+	if not _gear_worn(id):
 		return
-	has_life_jacket = false
-	life_jacket_on_ground = true
-	life_jacket_position = player_position
-	message = "Dropped — press G nearby to pick it up"
+	match id:
+		"life_jacket":
+			has_life_jacket = false
+			life_jacket_on_ground = true
+			life_jacket_position = player_position
+		"fishing_catcher":
+			has_fishing_catcher = false
+			fishing_catcher_on_ground = true
+			fishing_catcher_position = player_position
+		"sword":
+			has_sword = false
+			sword_on_ground = true
+			sword_position = player_position
+	message = "Dropped " + _gear_label(id)
 	message_timer = 2.8
-	spawn_burst(life_jacket_position, accent_color, 10)
+	spawn_burst(player_position, accent_color, 10)
 	add_shake(0.16)
 	_sfx("equip")
 
-func pick_up_life_jacket() -> bool:
-	if not life_jacket_on_ground:
+func _pickup_gear(id: String) -> bool:
+	if not _gear_on_ground(id):
 		return false
-	if player_position.distance_to(life_jacket_position) > 0.85:
-		message = "Move closer to the dropped life jacket"
+	if player_position.distance_to(_gear_position(id)) > 0.85:
+		message = "Move closer to the dropped gear"
 		message_timer = 2.0
 		return false
-	has_life_jacket = true
-	life_jacket_on_ground = false
+	match id:
+		"life_jacket":
+			has_life_jacket = true
+			life_jacket_on_ground = false
+		"fishing_catcher":
+			has_fishing_catcher = true
+			fishing_catcher_on_ground = false
+		"sword":
+			has_sword = true
+			sword_on_ground = false
 	if state == "crafting":
 		close_craft_table()
 	message = "Equipped"
@@ -1836,11 +1919,57 @@ func pick_up_life_jacket() -> bool:
 	_sfx("equip")
 	return true
 
-func toggle_life_jacket() -> void:
-	if has_life_jacket:
-		drop_life_jacket()
+func _toggle_gear(id: String) -> void:
+	if _gear_worn(id):
+		_drop_gear(id)
 	else:
-		pick_up_life_jacket()
+		_pickup_gear(id)
+
+func toggle_life_jacket() -> void:
+	_toggle_gear("life_jacket")
+
+func drop_life_jacket() -> void:
+	_drop_gear("life_jacket")
+
+func pick_up_life_jacket() -> bool:
+	return _pickup_gear("life_jacket")
+
+func handle_gear_key() -> void:
+	# Pick up a dropped gear item within reach that isn't already worn.
+	for id in GEAR_IDS:
+		var id_str := String(id)
+		if _gear_on_ground(id_str) and not _gear_worn(id_str) and player_position.distance_to(_gear_position(id_str)) <= 0.85:
+			_pickup_gear(id_str)
+			return
+	# Wearing gear → offer a drop dialog so the player picks which to drop.
+	if _worn_gear_ids().size() > 0:
+		open_drop_select()
+		return
+	message = "Nothing to wear or drop"
+	message_timer = 2.0
+
+func open_drop_select() -> void:
+	drop_gear_ids = _worn_gear_ids()
+	if drop_gear_ids.is_empty():
+		return
+	drop_selected = 0
+	state = "drop_select"
+	message_timer = 0.0
+	_sfx("menu_open")
+
+func confirm_drop_selection() -> void:
+	if state != "drop_select":
+		return
+	var id := String(drop_gear_ids[clampi(drop_selected, 0, drop_gear_ids.size() - 1)])
+	state = "playing"
+	_sfx("menu_confirm")
+	_drop_gear(id)
+
+func close_drop_select() -> void:
+	if state != "drop_select":
+		return
+	state = "playing"
+	message_timer = 0.0
 
 func update_surface_level() -> void:
 	if state != "playing":
@@ -1993,6 +2122,18 @@ func _unhandled_input(event: InputEvent) -> void:
 				confirm_restart()
 			elif keycode == KEY_ESCAPE:
 				close_restart_confirm()
+		elif state == "drop_select":
+			if drop_gear_ids.size() > 0:
+				if keycode == KEY_UP or keycode == KEY_W:
+					drop_selected = posmod(drop_selected - 1, drop_gear_ids.size())
+					_sfx("menu_move")
+				elif keycode == KEY_DOWN or keycode == KEY_S:
+					drop_selected = posmod(drop_selected + 1, drop_gear_ids.size())
+					_sfx("menu_move")
+				elif keycode == KEY_ENTER or keycode == KEY_KP_ENTER or keycode == KEY_SPACE:
+					confirm_drop_selection()
+				elif keycode == KEY_ESCAPE or keycode == KEY_G or keycode == KEY_B:
+					close_drop_select()
 		else:
 			if level_kind == "surface" and keycode == KEY_F:
 				if not try_collect_spirit():
@@ -2000,7 +2141,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			elif level_kind == "surface" and keycode == KEY_B:
 				open_craft_table()
 			elif level_kind == "surface" and keycode == KEY_G:
-				toggle_life_jacket()
+				handle_gear_key()
 			elif keycode == KEY_ENTER or keycode == KEY_KP_ENTER:
 				attack()
 			elif keycode == KEY_Q:
@@ -2474,6 +2615,16 @@ func draw_depth_sorted() -> void:
 			"depth": iso_to_screen(life_jacket_position).y,
 			"kind": "dropped_jacket",
 		})
+	if fishing_catcher_on_ground:
+		drawables.append({
+			"depth": iso_to_screen(fishing_catcher_position).y,
+			"kind": "dropped_fishing_catcher",
+		})
+	if sword_on_ground:
+		drawables.append({
+			"depth": iso_to_screen(sword_position).y,
+			"kind": "dropped_sword",
+		})
 	drawables.append({
 		"depth": iso_to_screen(player_position).y,
 		"kind": "player",
@@ -2515,6 +2666,10 @@ func draw_depth_sorted() -> void:
 				draw_gate()
 			"dropped_jacket":
 				draw_dropped_life_jacket()
+			"dropped_fishing_catcher":
+				draw_dropped_fishing_catcher()
+			"dropped_sword":
+				draw_dropped_sword()
 			"player":
 				draw_player()
 			"enemy":
@@ -2946,10 +3101,12 @@ func draw_player() -> void:
 		draw_drowning_overlay(base, progress)
 	else:
 		if face == "nw":
-			draw_pixel_sprite("sword_" + face, frame_index, box, tint)
+			if has_sword:
+				draw_pixel_sprite("sword_" + face, frame_index, box, tint)
 		draw_pixel_sprite(face, frame_index, box, tint)
 		if face != "nw":
-			draw_pixel_sprite("sword_" + face, frame_index, box, tint)
+			if has_sword:
+				draw_pixel_sprite("sword_" + face, frame_index, box, tint)
 	if has_life_jacket and not drowning:
 		# keep the jacket aligned to the grounded body
 		var dy: float = box.y - (spring.y - 90.0)
@@ -3086,6 +3243,16 @@ func draw_life_jacket(position: Vector2) -> void:
 		draw_polyline(points, ink_color, 1.5, true)
 		draw_line(center + Vector2(-8, -8), center + Vector2(8, -8), ink_color, 2.0)
 
+func draw_dropped_prompt(position: Vector2, label: String, accent: Color) -> void:
+	var text := label + "  •  G PICK UP"
+	var line_w := ui_font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x
+	var box_w := maxf(96.0, line_w + 28.0)
+	var prompt := Rect2(position + Vector2(-box_w * 0.5, -57), Vector2(box_w, 23))
+	draw_rect(Rect2(prompt.position + Vector2(3, 4), prompt.size), Color(0.0, 0.0, 0.0, 0.22), true)
+	draw_rect(prompt, Color(void_color, 0.92), true)
+	draw_line(prompt.position, prompt.position + Vector2(prompt.size.x, 0), accent, 1.5)
+	draw_string(ui_font, prompt.position + Vector2(14, 16), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, paper_color)
+
 func draw_dropped_life_jacket() -> void:
 	var position := iso_to_screen(life_jacket_position)
 	draw_shadow(position, 22.0, 0.34)
@@ -3103,11 +3270,34 @@ func draw_dropped_life_jacket() -> void:
 		draw_polyline(points, ink_color, 1.5, true)
 		draw_line(center + Vector2(-6, 0), center + Vector2(6, 0), ink_color, 2.0)
 	if player_position.distance_to(life_jacket_position) <= 0.85:
-		var prompt := Rect2(position + Vector2(-48, -57), Vector2(96, 23))
-		draw_rect(Rect2(prompt.position + Vector2(3, 4), prompt.size), Color(0.0, 0.0, 0.0, 0.22), true)
-		draw_rect(prompt, Color(void_color, 0.92), true)
-		draw_line(prompt.position, prompt.position + Vector2(prompt.size.x, 0), safe_color, 1.5)
-		draw_string(ui_font, prompt.position + Vector2(14, 16), "G  PICK UP", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, paper_color)
+		draw_dropped_prompt(position, "LIFE JACKET", safe_color)
+
+func draw_dropped_fishing_catcher() -> void:
+	var position := iso_to_screen(fishing_catcher_position)
+	draw_shadow(position, 20.0, 0.3)
+	var rod_base := position + Vector2(-12.0, 3.0)
+	var rod_tip := position + Vector2(12.0, -22.0)
+	draw_line(rod_base, rod_tip, ink_color, 3.0)
+	draw_line(rod_base, rod_tip, accent_color, 1.2)
+	draw_line(rod_tip, rod_tip + Vector2(-1.0, 12.0), muted_color, 1.2)
+	draw_line(rod_tip + Vector2(-1.0, 12.0), rod_tip + Vector2(-7.0, 8.0), muted_color, 1.2)
+	var loop_center := rod_tip + Vector2(1.0, 3.0)
+	draw_circle(loop_center, 5.0, Color(0.0, 0.0, 0.0, 0.2), true)
+	draw_arc(loop_center, 5.0, 0.0, TAU, 24, muted_color, 1.4)
+	if player_position.distance_to(fishing_catcher_position) <= 0.85:
+		draw_dropped_prompt(position, "FISHING CATCHER", accent_color)
+
+func draw_dropped_sword() -> void:
+	var position := iso_to_screen(sword_position)
+	draw_shadow(position, 20.0, 0.3)
+	var base := position + Vector2(-14.0, 6.0)
+	var tip := position + Vector2(18.0, -24.0)
+	draw_line(base, tip, ink_color, 3.2)
+	draw_line(base, tip, accent_color.lightened(0.2), 1.4)
+	draw_line(base + Vector2(0, 2), base + Vector2(12, -2), ink_color, 3.0)
+	draw_line(base + Vector2(0, -2), base + Vector2(12, -6), ink_color, 3.0)
+	if player_position.distance_to(sword_position) <= 0.85:
+		draw_dropped_prompt(position, "SWORD", accent_color)
 
 func draw_enemy(index: int) -> void:
 	if index < 0 or index >= enemies.size():
@@ -3392,6 +3582,27 @@ func draw_restart_confirm(viewport: Vector2) -> void:
 		draw_string(ui_font, row.position + Vector2(0, 29), label, HORIZONTAL_ALIGNMENT_CENTER, row.size.x, 15, paper_color if selected else muted_color)
 	draw_string(ui_font, Vector2(0, 472), "W / S select     ENTER / SPACE confirm     ESC close", HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 14, muted_color)
 
+func draw_drop_select(viewport: Vector2) -> void:
+	draw_rect(Rect2(Vector2.ZERO, viewport), Color(void_color, 0.82), true)
+	var panel := Rect2(330, 150, 620, 340)
+	draw_rect(Rect2(panel.position + Vector2(7, 9), panel.size), Color(0.0, 0.0, 0.0, 0.34), true)
+	draw_rect(panel, Color(void_color, 0.98), true)
+	draw_line(panel.position, panel.position + Vector2(panel.size.x, 0), accent_color, 2.0)
+	draw_line(panel.position + Vector2(0, panel.size.y), panel.position + panel.size, Color(accent_color, 0.35), 1.0)
+	draw_string(ui_font, Vector2(0, 104), "DROP GEAR", HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 40, paper_color)
+	draw_string(ui_font, Vector2(0, 138), "Choose which item to drop", HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 16, muted_color)
+	for row_index in range(drop_gear_ids.size()):
+		var id := String(drop_gear_ids[row_index])
+		var selected := row_index == drop_selected
+		var row := Rect2(370, 196 + row_index * 56, 540, 44)
+		var row_color := accent_color if selected else safe_color
+		draw_rect(Rect2(row.position + Vector2(4, 5), row.size), Color(0.0, 0.0, 0.0, 0.24), true)
+		draw_rect(row, Color(ink_color, 0.96) if not selected else Color(void_color, 0.98), true)
+		draw_line(row.position, row.position + Vector2(row.size.x, 0), row_color if selected else Color(muted_color, 0.3), 2.0 if selected else 1.0)
+		draw_hud_diamond(row.position + Vector2(26, 22), 8.0 if selected else 5.0, row_color)
+		draw_string(ui_font, row.position + Vector2(52, 29), _gear_label(id), HORIZONTAL_ALIGNMENT_LEFT, -1, 15, paper_color if selected else muted_color)
+	draw_string(ui_font, Vector2(0, 472), "W / S select     ENTER drop     ESC / G close", HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 14, muted_color)
+
 func draw_wrapped_text(text: String, pos: Vector2, max_width: float, font_size: int, color: Color) -> float:
 	var words := text.split(" ")
 	var line := ""
@@ -3496,6 +3707,9 @@ func draw_hud(viewport: Vector2) -> void:
 		return
 	if state == "crafting":
 		draw_craft_table(viewport)
+		return
+	if state == "drop_select":
+		draw_drop_select(viewport)
 		return
 	draw_plaque(Rect2(30, 24, 330, 76), accent_color)
 	var title := "RIVER RUN" if level_kind == "surface" else "FACETED DEPTHS"

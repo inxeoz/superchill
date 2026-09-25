@@ -124,6 +124,9 @@ func run_test() -> void:
 	if not validate_hard_reset():
 		quit(1)
 		return
+	if not validate_drop_select():
+		quit(1)
+		return
 	print("game_test: ok")
 	quit(0)
 
@@ -283,6 +286,47 @@ func validate_hard_reset() -> bool:
 		return false
 	game.hard_reset()
 	return game.level_index == 0 and game.unlocked_ideas.is_empty() and game.state == "level_select"
+
+func validate_drop_select() -> bool:
+	game.load_level(0)
+	if not game.has_sword:
+		return false
+	# The sword is default gear: without it carried, the strike does nothing.
+	game.attack_cooldown = 0.0
+	var before_no_sword: int = game.effects.size()
+	game.has_sword = false
+	game.sword_on_ground = true
+	game.sword_position = game.player_position
+	game.attack()
+	if game.effects.size() != before_no_sword:
+		return false
+	# Stand away so G doesn't auto-pick the sword; nothing worn remains.
+	game.player_position = Vector2(game.exit_cell) + Vector2(0.5, 0.5)
+	game.handle_gear_key()
+	if game.state != "playing":
+		return false
+	# Walk onto the dropped sword and press G to re-equip it.
+	game.player_position = game.sword_position
+	game.handle_gear_key()
+	if game.state != "playing" or not game.has_sword or game.sword_on_ground:
+		return false
+	# Sword re-equipped: the strike adds exactly one slash.
+	game.attack_cooldown = 0.0
+	var before_sword: int = game.effects.size()
+	game.attack()
+	if game.effects.size() != before_sword + 1:
+		return false
+	# Multiple worn gear → the drop dialog lists every wearable.
+	game.has_life_jacket = true
+	game.has_fishing_catcher = true
+	game.handle_gear_key()
+	if game.state != "drop_select":
+		return false
+	var ids: Array = game.drop_gear_ids
+	if ids.size() != 3 or String(ids[0]) != "life_jacket" or String(ids[1]) != "fishing_catcher" or String(ids[2]) != "sword":
+		return false
+	game.confirm_drop_selection()
+	return game.state == "playing" and not game.has_life_jacket and game.life_jacket_on_ground and game.has_fishing_catcher and game.has_sword
 
 func validate_wall_faces() -> bool:
 	game.camera_angle = PI * 0.5
