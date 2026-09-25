@@ -248,6 +248,18 @@ func validate_surface_level() -> bool:
 			return false
 		if not game.can_occupy(spirit["position"], 0.22):
 			return false
+	# Every spirit is unique: no two on the same tile, and each unlocks a distinct recipe.
+	var seen_spirit_cells: Dictionary = {}
+	var seen_spirit_recipes: Dictionary = {}
+	for spirit: Dictionary in game.spirits:
+		var sc: Vector2i = game.cell_at(spirit["position"])
+		if seen_spirit_cells.has(sc):
+			return false
+		seen_spirit_cells[sc] = true
+		var rid := String(spirit["recipe"])
+		if seen_spirit_recipes.has(rid):
+			return false
+		seen_spirit_recipes[rid] = true
 	# Water is impassable without the jacket.
 	var water_position := Vector2(20.5, 12.5)
 	if game.can_occupy(water_position, 0.22):

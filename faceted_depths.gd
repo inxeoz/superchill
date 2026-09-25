@@ -920,12 +920,25 @@ func load_level(index: int) -> void:
 		})
 	spirits.clear()
 	spirit_cells.clear()
+	var seen_recipe_ids: Dictionary = {}
 	for spirit_data in level.get("spirits", []):
 		var spirit_cell: Vector2i = spirit_data["cell"]
+		var recipe_id := String(spirit_data["recipe"])
+		# Skip duplicate spirits: same tile, unknown recipe, or a recipe already
+		# unlocked by another spirit on this level (each spirit = a unique idea).
+		if not walkable.has(spirit_cell) or water_cells.has(spirit_cell):
+			continue
+		if spirit_cells.has(spirit_cell):
+			continue
+		if recipe_index_for_id(recipe_id) < 0:
+			continue
+		if seen_recipe_ids.has(recipe_id):
+			continue
 		spirit_cells[spirit_cell] = true
+		seen_recipe_ids[recipe_id] = true
 		spirits.append({
 			"position": Vector2(spirit_cell) + Vector2(0.5, 0.5),
-			"recipe": String(spirit_data["recipe"]),
+			"recipe": recipe_id,
 			"taken": false,
 			"phase": spirits.size() * 1.9,
 		})
@@ -2874,6 +2887,23 @@ func draw_pickup_select(viewport: Vector2) -> void:
 		draw_string(ui_font, row.position + Vector2(0, 29), "×%02d" % int(entry["count"]), HORIZONTAL_ALIGNMENT_RIGHT, row.size.x - 16, 15, row_color)
 	draw_string(ui_font, Vector2(0, 472), "W / S select     ENTER / SPACE pick up     ESC / B close", HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 14, muted_color)
 
+func draw_wrapped_text(text: String, pos: Vector2, max_width: float, font_size: int, color: Color) -> float:
+	var words := text.split(" ")
+	var line := ""
+	var y := pos.y
+	for word in words:
+		var candidate := word if line == "" else line + " " + word
+		if line != "" and ui_font.get_string_size(candidate, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x > max_width:
+			draw_string(ui_font, Vector2(pos.x, y), line, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, color)
+			y += font_size + 6
+			line = word
+		else:
+			line = candidate
+	if line != "":
+		draw_string(ui_font, Vector2(pos.x, y), line, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, color)
+		y += font_size + 6
+	return y
+
 func draw_craft_table(viewport: Vector2) -> void:
 	draw_rect(Rect2(Vector2.ZERO, viewport), Color(void_color, 0.82), true)
 	var panel := Rect2(230, 52, 820, 616)
@@ -2917,8 +2947,8 @@ func draw_craft_table(viewport: Vector2) -> void:
 	else:
 		var n := usages.size()
 		var plural := "S" if n != 1 else ""
-		draw_string(ui_font, Vector2(px, py), "WE CAN MAKE " + str(n) + " THING" + plural + " OUT OF THIS", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, accent_color)
-		py += 30
+		py = draw_wrapped_text("WE CAN MAKE " + str(n) + " THING" + plural + " OUT OF THIS", Vector2(px, py), 270.0, 13, accent_color)
+		py += 8
 		# Stack every recipe's ingredients on their own line so nothing clips.
 		for idx in range(usages.size()):
 			var recipe_i: int = usages[idx]
@@ -2942,7 +2972,7 @@ func draw_craft_table(viewport: Vector2) -> void:
 		elif sel_missing.is_empty():
 			draw_string(ui_font, Vector2(px, py), "PRESS ENTER TO BUILD", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, paper_color)
 		else:
-			draw_string(ui_font, Vector2(px, py), "NEED " + missing_counts_label(sel_missing), HORIZONTAL_ALIGNMENT_LEFT, -1, 13, accent_color)
+			draw_wrapped_text("NEED " + missing_counts_label(sel_missing), Vector2(px, py), 270.0, 13, accent_color)
 	if message_timer > 0.0:
 		draw_string(ui_font, Vector2(0, 526), message, HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 15, paper_color)
 	var controls_rect := Rect2(300, 574, 680, 56)
@@ -3004,18 +3034,21 @@ func draw_bottle_plaque(rect: Rect2) -> void:
 	draw_bottle(rect.position + Vector2(29, 54), 0.58, safe_color)
 	draw_string(ui_font, rect.position + Vector2(47, 59), "%02d" % bottle_count, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, paper_color)
 	draw_line(rect.position + Vector2(94, 17), rect.position + Vector2(94, 59), Color(muted_color, 0.4), 1.0)
-	draw_string(ui_font, rect.position + Vector2(108, 29), "JACKET", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, muted_color)
+	var jacket_unlocked := is_idea_unlocked(recipe_index_for_id("life_jacket"))
+	var jacket_label := "JACKET" if jacket_unlocked else "CRAFT"
+	draw_string(ui_font, rect.position + Vector2(108, 29), jacket_label, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, muted_color)
 	var jacket_color := safe_color if has_life_jacket else accent_color
-	var jacket_text := str(maxi(0, LIFE_JACKET_BOTTLES - total_collected_items())) + " MORE"
+	var jacket_text := "???"
 	if has_life_jacket:
 		jacket_text = "WEARING"
 	elif life_jacket_on_ground:
 		jacket_text = "DROPPED"
-	elif total_collected_items() >= LIFE_JACKET_BOTTLES:
-		if is_idea_unlocked(recipe_index_for_id("life_jacket")):
+	elif jacket_unlocked:
+		jacket_text = str(maxi(0, LIFE_JACKET_BOTTLES - total_collected_items())) + " MORE"
+		if total_collected_items() >= LIFE_JACKET_BOTTLES:
 			jacket_text = "CAN CRAFT"
-		else:
-			jacket_text = "CAN CRAFT SOMETHING"
+	elif total_collected_items() >= LIFE_JACKET_BOTTLES:
+		jacket_text = "CAN CRAFT SOMETHING"
 	draw_string(ui_font, rect.position + Vector2(108, 55), jacket_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, jacket_color)
 	draw_line(rect.position + Vector2(18, 72), rect.position + Vector2(rect.size.x - 18, 72), Color(muted_color, 0.4), 1.0)
 	draw_leaf(rect.position + Vector2(29, 88), 0.55, floor_petrol_color)
