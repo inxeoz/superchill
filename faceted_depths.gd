@@ -29,7 +29,7 @@ const ITEM_PLURALS := {
 }
 const DEFAULT_CAMERA_ZOOM := 1.08
 const CAMERA_ZOOM_MIN := 0.55
-const CAMERA_ZOOM_MAX := 2.2
+const CAMERA_ZOOM_MAX := 3.2
 const CAMERA_ZOOM_STEP := 0.1
 const CAMERA_FOLLOW_RATE := 2.4
 const LEVELS := [
@@ -37,23 +37,25 @@ const LEVELS := [
 		"name": "RIVER RUN",
 		"kind": "surface",
 		"map": [
-			"################",
-			"#.....~........#",
-			"#..#..~........#",
-			"#.....~........#",
-			"#..#..~........#",
-			"#.....~........#",
-			"#.##..~........#",
-			"#.....~........#",
-			"#..#..~........#",
-			"#.....~........#",
-			"################",
+			"####################",
+			"#........~~~~MMMM..#",
+			"#........~~~~MMMM..#",
+			"#........~~~~.MMM..#",
+			"#........~~~~MMMM..#",
+			"#MMMMMM..~~~~MMMM..#",
+			"#.MMMMM..~~~~.MMM..#",
+			"#........~~~~......#",
+			"#........~~~~......#",
+			"#........~~~~......#",
+			"#........~~~~......#",
+			"#........~~~~......#",
+			"####################",
 		],
 		"shards": [],
 		"spawns": [],
-		"trees": [Vector2i(2, 2), Vector2i(5, 6), Vector2i(9, 2), Vector2i(12, 5)],
-		"start": Vector2i(1, 7),
-		"exit": Vector2i(14, 1),
+		"trees": [Vector2i(7, 8), Vector2i(4, 9), Vector2i(14, 9), Vector2i(16, 10)],
+		"start": Vector2i(2, 10),
+		"exit": Vector2i(17, 1),
 		"void": "102f3a",
 		"deep": "79bee3",
 		"ink": "294f59",
@@ -981,7 +983,7 @@ func build_walkable() -> void:
 		var row: String = map_rows[y]
 		for x in range(row.length()):
 			var cell := Vector2i(x, y)
-			if row[x] != "#":
+			if row[x] != "#" and row[x] != "M":
 				walkable[cell] = true
 			if row[x] == "~":
 				water_cells[cell] = true
@@ -1920,7 +1922,7 @@ func wall_drawables() -> Array[Dictionary]:
 			if not walkable.has(cell):
 				drawables.append({
 					"depth": iso_to_screen(Vector2(cell) + Vector2(0.5, 0.5)).y,
-					"kind": "wall",
+					"kind": "mountain" if is_mountain(cell) else "wall",
 					"cell": cell,
 					"height": wall_render_height(cell),
 				})
@@ -1980,6 +1982,9 @@ func draw_depth_sorted() -> void:
 			"wall":
 				var wall_cell: Vector2i = drawable["cell"]
 				draw_wall(wall_cell, float(drawable["height"]))
+			"mountain":
+				var mountain_cell: Vector2i = drawable["cell"]
+				draw_mountain(mountain_cell)
 			"shard":
 				var shard: Dictionary = drawable["shard"]
 				draw_shard(shard)
@@ -2003,6 +2008,37 @@ func draw_depth_sorted() -> void:
 			"enemy":
 				var enemy_index: int = drawable["index"]
 				draw_enemy(enemy_index)
+
+func is_mountain(cell: Vector2i) -> bool:
+	if cell.y < 0 or cell.y >= map_rows.size():
+		return false
+	var row: String = map_rows[cell.y]
+	if cell.x < 0 or cell.x >= row.length():
+		return false
+	return row[cell.x] == "M"
+
+func draw_mountain(cell: Vector2i) -> void:
+	var base := tile_polygon(cell)
+	var center := iso_to_screen(Vector2(cell) + Vector2(0.5, 0.5))
+	var n: Vector2 = base[0]
+	var e: Vector2 = base[1]
+	var s: Vector2 = base[2]
+	var w: Vector2 = base[3]
+	var peak := center + Vector2(0, -TILE_HEIGHT * 2.0)
+	var rock := slate_color
+	draw_colored_polygon(PackedVector2Array([n, w, peak]), slate_light_color)
+	draw_colored_polygon(PackedVector2Array([n, e, peak]), rock)
+	draw_colored_polygon(PackedVector2Array([e, s, peak]), rock.darkened(0.28))
+	draw_colored_polygon(PackedVector2Array([s, w, peak]), rock.lightened(0.06))
+	draw_colored_polygon(PackedVector2Array([
+		peak,
+		peak.lerp(n, 0.24),
+		peak.lerp(e, 0.24),
+		peak.lerp(s, 0.24),
+		peak.lerp(w, 0.24),
+	]), paper_color.lightened(0.05))
+	draw_polyline(PackedVector2Array([n, e, s, w, n]), ink_color, 1.2)
+	draw_line(n, peak, ink_color, 1.2)
 
 func draw_wall(cell: Vector2i, height := WALL_HEIGHT) -> void:
 	if level_kind == "surface":
