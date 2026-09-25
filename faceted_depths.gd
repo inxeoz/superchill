@@ -388,7 +388,7 @@ func update_player(delta: float) -> void:
 		var world_direction := Vector2(
 			input_direction.x + input_direction.y,
 			input_direction.y - input_direction.x
-		).normalized()
+		).normalized().rotated(-camera_angle)
 		player_position = move_with_collisions(player_position, world_direction * PLAYER_SPEED * delta, 0.22)
 		player_facing = world_direction
 		walk_animation += delta * 8.0
@@ -1009,7 +1009,8 @@ func draw_effects() -> void:
 		color.a *= 1.0 - progress
 		if effect["kind"] == "slash":
 			var direction: Vector2 = effect["direction"]
-			var screen_direction := Vector2(direction.x - direction.y, direction.x + direction.y).normalized()
+			var rotated_direction := direction.rotated(camera_angle)
+			var screen_direction := Vector2(rotated_direction.x - rotated_direction.y, rotated_direction.x + rotated_direction.y).normalized()
 			var start_angle := atan2(screen_direction.y, screen_direction.x) - 0.85
 			draw_arc(position + Vector2(0, -22), 34.0 + progress * 18.0, start_angle, start_angle + 1.7, 24, color, 7.0 * (1.0 - progress) + 1.0, true)
 		else:

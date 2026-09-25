@@ -45,6 +45,11 @@ func run_test() -> void:
 		quit(1)
 		return
 	game.reset_camera()
+	var input_rotation_valid := await validate_input_rotation()
+	if not input_rotation_valid:
+		quit(1)
+		return
+	game.reset_camera()
 	if not validate_wall_faces():
 		quit(1)
 		return
@@ -93,6 +98,41 @@ func run_test() -> void:
 		return
 	print("game_test: ok")
 	quit(0)
+
+func validate_input_rotation() -> bool:
+	game.set_process(false)
+	game.walkable = {}
+	for x in range(-10, 11):
+		for y in range(-10, 11):
+			game.walkable[Vector2i(x, y)] = true
+	await process_frame
+	var results: Array[Vector2] = []
+	for angle in [0.0, PI * 0.5]:
+		game.player_position = Vector2(5.5, 5.5)
+		game.camera_target = game.player_position
+		game.camera_angle = angle
+		var key_down := InputEventKey.new()
+		key_down.physical_keycode = KEY_D
+		key_down.keycode = KEY_D
+		key_down.pressed = true
+		Input.parse_input_event(key_down)
+		await process_frame
+		var before: Vector2 = game.player_position
+		game.update_player(0.25)
+		results.append((game.player_position - before).normalized())
+		var key_up := InputEventKey.new()
+		key_up.physical_keycode = KEY_D
+		key_up.keycode = KEY_D
+		key_up.pressed = false
+		Input.parse_input_event(key_up)
+		await process_frame
+	game.set_process(true)
+	var base_direction := Vector2(1.0, -1.0).normalized()
+	var expected_rotated := base_direction.rotated(-PI * 0.5)
+	var valid := results.size() == 2
+	if valid:
+		valid = results[0].is_equal_approx(base_direction) and results[1].is_equal_approx(expected_rotated)
+	return valid
 
 func validate_wall_faces() -> bool:
 	game.camera_angle = PI * 0.5
