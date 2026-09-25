@@ -2668,13 +2668,19 @@ func draw_shard(shard: Dictionary) -> void:
 		var orbit := center + Vector2(cos(angle), sin(angle) * 0.42) * 25.0
 		draw_circle(orbit, 1.8, Color(paper_color, 0.8))
 
+func is_drowning() -> bool:
+	return level_kind == "surface" and not has_life_jacket and water_cells.has(cell_at(player_position))
+
 func draw_player() -> void:
 	var base := iso_to_screen(player_position)
 	draw_shadow(base, 24.0, 0.38)
 	var face := player_face_name()
+	var drowning := is_drowning()
 	var tint := Color.WHITE
 	if invulnerability > 0.0 and int(elapsed * 18.0) % 2 == 0:
 		tint = Color(1.0, 0.72, 0.76, 0.46)
+	if drowning:
+		tint = Color(0.74, 0.86, 1.0, 0.92)
 	var fwd := Vector2(1, -1).normalized()
 	match face:
 		"se":
@@ -2690,20 +2696,66 @@ func draw_player() -> void:
 		spring += fwd * 2.0
 	if invulnerability > 0.0:
 		spring.x += sin(invulnerability * 40.0) * 3.0
+	if drowning:
+		# frantic bobbing while treading water
+		spring.y += sin(elapsed * 6.0) * 3.5
 	var frame_index := int(walk_animation)
 	var box := player_box_origin(face, frame_index, spring)
-	if face == "nw":
-		draw_pixel_sprite("sword_" + face, frame_index, box, tint)
-	draw_pixel_sprite(face, frame_index, box, tint)
-	if face != "nw":
-		draw_pixel_sprite("sword_" + face, frame_index, box, tint)
-	if has_life_jacket:
+	if drowning:
+		# The character sinks as it drowns: shallow wade -> waist -> head + arm ->
+		# fully submerged, driven by how much health has been lost.
+		var progress := drown_progress()
+		var waterline: float = box.y + (base.y - box.y) * (1.0 - progress)
+		draw_pixel_sprite(face, frame_index, box, tint, waterline)
+		if progress >= 0.2:
+			draw_drowning_arms(base, box, progress)
+		draw_drowning_overlay(base, progress)
+	else:
+		if face == "nw":
+			draw_pixel_sprite("sword_" + face, frame_index, box, tint)
+		draw_pixel_sprite(face, frame_index, box, tint)
+		if face != "nw":
+			draw_pixel_sprite("sword_" + face, frame_index, box, tint)
+	if has_life_jacket and not drowning:
 		# keep the jacket aligned to the grounded body
 		var dy: float = box.y - (spring.y - 90.0)
 		draw_life_jacket(Vector2(spring.x, spring.y + dy))
 
+
 # Anchor the sprite's boots to the tile centre so the character stands planted
 # on the ground (feet centred horizontally on base.x, sole on base.y).
+func drown_progress() -> float:
+	return clampf(float(MAX_HEALTH - health) / float(MAX_HEALTH), 0.0, 1.0)
+
+func draw_drowning_arms(base: Vector2, box: Vector2, progress: float) -> void:
+	var skin := Color("c7814c")
+	var hand := Color("f4ab77")
+	var frac := base.y - box.y
+	var sh_y := box.y + frac * 0.24
+	var flap := sin(elapsed * (6.0 + progress * 3.0)) * (6.0 + progress * 5.0)
+	var reach := 26.0 + progress * 10.0
+	var l_tip := Vector2(base.x - 18.0 - flap, sh_y - reach + flap)
+	draw_line(Vector2(base.x - 9.0, sh_y), l_tip, skin, 4.0)
+	draw_circle(l_tip, 3.2, hand)
+	var r_tip := Vector2(base.x + 18.0 + flap, sh_y - reach - flap)
+	draw_line(Vector2(base.x + 9.0, sh_y), r_tip, skin, 4.0)
+	draw_circle(r_tip, 3.2, hand)
+
+func draw_drowning_overlay(base: Vector2, progress: float) -> void:
+	var t0: float = fposmod(elapsed * (0.8 + progress * 0.5), 1.0)
+	var radius := 6.0 + t0 * 38.0
+	draw_arc(base + Vector2(0, 4), radius, 0.0, TAU, 24, Color(paper_color, 0.5 * (1.0 - t0)), 2.0, true)
+	for i in range(3):
+		var bt: float = fposmod(elapsed * (0.7 + progress * 0.6) + float(i) * 0.34, 1.0)
+		var bx := base.x + (float(i) - 1.0) * 9.0 + sin(elapsed * 3.0 + float(i)) * 2.0
+		var by := base.y + 24.0 - bt * (52.0 + progress * 30.0)
+		draw_circle(Vector2(bx, by), 2.6 * (1.0 - bt * 0.4), Color(paper_color, 0.55 * (1.0 - bt)))
+	if progress >= 0.95:
+		var corpse_center := Vector2(base.x, base.y + 6.0)
+		draw_rect(Rect2(corpse_center + Vector2(-24, -8), Vector2(48, 16)), Color(ink_color, 0.5))
+		draw_circle(corpse_center + Vector2(-20, -4), 5.0, Color(ink_color, 0.5))
+	draw_arc(base + Vector2(0, 5), 30.0, 0.0, TAU, 28, Color(safe_color.lightened(0.22), 0.4), 1.6, true)
+
 func player_box_origin(face: String, frame_index: int, base_position: Vector2) -> Vector2:
 	var frames: Array = PLAYER_PIXELS[face]
 	var frame: Dictionary = frames[frame_index % frames.size()]
@@ -2738,7 +2790,7 @@ func player_box_origin(face: String, frame_index: int, base_position: Vector2) -
 # facing). Each opaque pixel draws as a 2x2 rect inside the 64x64 box origin;
 # transparent-boundary pixels get a soft feather so the silhouette reads
 # smooth/HD instead of hard-stepped.
-func draw_pixel_sprite(art_key: String, frame_index: int, box_origin: Vector2, tint: Color) -> void:
+func draw_pixel_sprite(art_key: String, frame_index: int, box_origin: Vector2, tint: Color, crop_y: float = INF) -> void:
 	var palette: Array = PLAYER_PIXELS["palette"]
 	var frame: Dictionary
 	var art = PLAYER_PIXELS[art_key]
@@ -2763,6 +2815,8 @@ func draw_pixel_sprite(art_key: String, frame_index: int, box_origin: Vector2, t
 			var base_c: Color = palette[ci]
 			var draw_color := Color(base_c.r * tint.r, base_c.g * tint.g, base_c.b * tint.b, base_c.a * tint.a)
 			var px := box_origin + Vector2((ox + c) * scale, (oy + r) * scale)
+			if px.y > crop_y:
+				continue
 			draw_rect(Rect2(px, Vector2(scale, scale)), draw_color)
 			if not pixel_opaque(rows, c, r - 1):
 				draw_rect(Rect2(px.x, px.y - aa, scale, aa), Color(draw_color, draw_color.a * 0.4))
