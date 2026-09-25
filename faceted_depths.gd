@@ -1413,7 +1413,7 @@ func recipe_kind_label(kind: String) -> String:
 
 func switch_recipe(step: int) -> void:
 	craft_slots.clear()
-	recipe_index = clampi(recipe_index + step, 0, RECIPES.size() - 1)
+	recipe_index = posmod(recipe_index + step, RECIPES.size())
 	clamp_craft_selection()
 	message_timer = 0.0
 
@@ -1628,7 +1628,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif state == "crafting":
 			var craft_visible_count := craft_visible_elements().size()
 			if keycode == KEY_TAB:
-				switch_recipe(1)
+				switch_recipe(-1 if event.shift_pressed else 1)
 			elif keycode == KEY_UP or keycode == KEY_W:
 				if craft_visible_count > 0:
 					craft_selected = posmod(craft_selected - 1, craft_visible_count)
@@ -1810,23 +1810,25 @@ func draw_floors() -> void:
 			center,
 			diamond[1],
 			diamond[2],
-		]), base.lightened(0.07))
+		]), base.lightened(0.03))
 		draw_colored_polygon(PackedVector2Array([
 			center,
 			diamond[3],
 			diamond[2],
-		]), base.darkened(0.12))
-		draw_polyline(diamond, Color(ink_color, 0.78), 1.0, true)
+		]), base.darkened(0.04))
+		draw_polyline(diamond, Color(ink_color, 0.35), 1.0, true)
+
+
 
 func draw_river_tile(cell: Vector2i, center: Vector2, diamond: PackedVector2Array) -> void:
 	var water := safe_color.darkened(0.38)
 	draw_colored_polygon(diamond, water)
-	draw_colored_polygon(PackedVector2Array([center, diamond[1], diamond[2]]), water.lightened(0.1))
-	draw_colored_polygon(PackedVector2Array([center, diamond[3], diamond[2]]), water.darkened(0.12))
+	draw_colored_polygon(PackedVector2Array([center, diamond[1], diamond[2]]), water.lightened(0.05))
+	draw_colored_polygon(PackedVector2Array([center, diamond[3], diamond[2]]), water.darkened(0.06))
 	var drift := fposmod(elapsed * 18.0 + float(cell.y) * 11.0, 34.0) - 17.0
 	draw_line(center + Vector2(-27.0 + drift, -3.0), center + Vector2(-5.0 + drift, -3.0), Color(paper_color, 0.52), 2.0)
 	draw_line(center + Vector2(2.0 - drift, 7.0), center + Vector2(22.0 - drift, 7.0), Color(paper_color, 0.32), 1.5)
-	draw_polyline(diamond, Color(safe_color.lightened(0.22), 0.72), 1.0, true)
+	draw_polyline(diamond, Color(safe_color.lightened(0.22), 0.4), 1.0, true)
 
 func border_cells() -> Dictionary:
 	var cells: Dictionary = {}
@@ -1967,8 +1969,6 @@ func draw_wall(cell: Vector2i, height := WALL_HEIGHT) -> void:
 		height = minf(height, 32.0)
 	var floor := tile_polygon(cell)
 	var top := tile_polygon(cell, height)
-	var top_center := iso_to_screen(Vector2(cell) + Vector2(0.5, 0.5))
-	top_center.y -= height
 	var faces := wall_faces(floor, top)
 	var top_color := ink_soft_color if posmod(cell.x + cell.y, 2) == 0 else wall_alt_color
 	draw_colored_polygon(faces[0], ink_color.darkened(0.28))
@@ -1976,14 +1976,9 @@ func draw_wall(cell: Vector2i, height := WALL_HEIGHT) -> void:
 	draw_colored_polygon(faces[1], ink_color.darkened(0.16))
 	draw_colored_polygon(faces[2], ink_color)
 	draw_colored_polygon(top, top_color)
-	draw_colored_polygon(PackedVector2Array([
-		top_center,
-		top[1],
-		top[2],
-	]), top_color.lightened(0.08))
-	draw_polyline(top, Color("0a0d18"), 1.5, true)
-	draw_line(faces[1][0], faces[1][3], Color("0a0d18"), 1.0)
-	draw_line(faces[2][0], faces[2][3], Color("0a0d18"), 1.0)
+	draw_polyline(top, Color("0a0d18"), 1.2, true)
+
+
 
 func draw_bottle_source(source: Dictionary) -> void:
 	var cell: Vector2i = source["cell"]
@@ -2779,7 +2774,7 @@ func draw_craft_table(viewport: Vector2) -> void:
 		draw_string(ui_font, Vector2(0, 526), message, HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 15, paper_color)
 	var controls_rect := Rect2(300, 574, 680, 56)
 	draw_plaque(controls_rect, slate_light_color)
-	var controls_text := String("TAB RECIPE     W/S ITEM     SPACE ADD     X REMOVE     ENTER BUILD     B/ESC CLOSE")
+	var controls_text := String("TAB CYCLE RECIPE     W/S ITEM     SPACE ADD     X REMOVE     ENTER BUILD     B/ESC CLOSE")
 	if life_jacket_on_ground:
 		controls_text = "E EQUIP LIFE JACKET     " + controls_text
 	draw_string(ui_font, Vector2(0, 608), controls_text, HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 13, muted_color)

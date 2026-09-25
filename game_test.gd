@@ -367,6 +367,13 @@ func validate_surface_level() -> bool:
 	game.switch_recipe(1)
 	if game.recipe_index != 1:
 		return false
+	# Tab cycles: switch again from the last recipe wraps back to the first
+	game.switch_recipe(1)
+	if game.recipe_index != 0:
+		return false
+	game.switch_recipe(1)
+	if game.recipe_index != 1:
+		return false
 	var cat_visible: Array = game.craft_visible_elements()
 	for need_kind in ["rope", "wood scrap", "plastic wrapper", "coiled spring"]:
 		var pos := -1
