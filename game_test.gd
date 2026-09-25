@@ -121,6 +121,9 @@ func run_test() -> void:
 	if game.state != "won":
 		quit(1)
 		return
+	if not validate_hard_reset():
+		quit(1)
+		return
 	print("game_test: ok")
 	quit(0)
 
@@ -273,6 +276,14 @@ func validate_restart_confirm() -> bool:
 	game._unhandled_input(enter)
 	return game.state == "playing" and game.shards_collected == 0 and not bool(game.shards[0]["taken"])
 
+func validate_hard_reset() -> bool:
+	game.unlocked_ideas["life_jacket"] = true
+	game.unlocked_ideas["fishing_catcher"] = true
+	if game.unlocked_ideas.is_empty():
+		return false
+	game.hard_reset()
+	return game.level_index == 0 and game.unlocked_ideas.is_empty() and game.state == "level_select"
+
 func validate_wall_faces() -> bool:
 	game.camera_angle = PI * 0.5
 	var floor: PackedVector2Array = game.tile_polygon(Vector2i(1, 1))
@@ -394,6 +405,10 @@ func validate_surface_level() -> bool:
 		if seen_spirit_recipes.has(rid):
 			return false
 		seen_spirit_recipes[rid] = true
+	# The build item is a gift: the collection prompt must never reveal its name.
+	for spirit: Dictionary in game.spirits:
+		if String(game.spirit_prompt_label(spirit)) != "SPIRIT":
+			return false
 	# Water is enterable, but wading in without a life jacket drowns you.
 	var water_position := Vector2(20.5, 12.5)
 	if not game.can_occupy(water_position, 0.22):

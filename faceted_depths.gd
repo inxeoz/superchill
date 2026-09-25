@@ -1004,9 +1004,19 @@ func adjust_sfx_volume(step: float) -> void:
 func settings_adjust(direction: int) -> void:
 	if menu_setting == 0:
 		adjust_sfx_volume(0.1 * float(direction))
-	else:
+	elif menu_setting == 1:
 		sfx_muted = not sfx_muted
 		_sfx("menu_confirm")
+
+func confirm_settings() -> void:
+	if menu_setting != 2:
+		return
+	_sfx("menu_confirm")
+	hard_reset()
+
+func hard_reset() -> void:
+	reset_game()
+	open_level_select()
 
 func update_level_scroll() -> void:
 	var max_scroll := maxi(0, LEVELS.size() - LEVEL_VISIBLE)
@@ -1929,13 +1939,18 @@ func _unhandled_input(event: InputEvent) -> void:
 				elif keycode == KEY_ESCAPE or keycode == KEY_L:
 					close_level_select()
 			else:
-				if keycode == KEY_UP or keycode == KEY_W or keycode == KEY_DOWN or keycode == KEY_S:
-					menu_setting = 0 if menu_setting == 1 else 1
+				if keycode == KEY_UP or keycode == KEY_W:
+					menu_setting = posmod(menu_setting - 1, 3)
+					_sfx("menu_move")
+				elif keycode == KEY_DOWN or keycode == KEY_S:
+					menu_setting = posmod(menu_setting + 1, 3)
 					_sfx("menu_move")
 				elif keycode == KEY_RIGHT or keycode == KEY_D:
 					settings_adjust(1)
 				elif keycode == KEY_LEFT or keycode == KEY_A:
 					settings_adjust(-1)
+				elif keycode == KEY_ENTER or keycode == KEY_KP_ENTER or keycode == KEY_SPACE:
+					confirm_settings()
 				elif keycode == KEY_ESCAPE or keycode == KEY_L:
 					close_level_select()
 		elif state == "pickup_select":
@@ -2225,6 +2240,11 @@ func draw_grass_tuft(cell: Vector2i, center: Vector2) -> void:
 			var tipp := center + Vector2(bx + sin(elapsed * 1.8 + float(b)) * 1.2, -bh)
 			draw_line(center + Vector2(bx, 7.0), tipp, tip_color, 1.8)
 
+func spirit_prompt_label(_spirit: Dictionary) -> String:
+	# The build item is a gift: collection never reveals its name. It only
+	# becomes visible once the item is actually crafted (see craft_table/HUD).
+	return "SPIRIT"
+
 func draw_spirit(spirit: Dictionary) -> void:
 	var pos := iso_to_screen(spirit["position"])
 	var bob := sin(elapsed * 2.2 + float(spirit["phase"])) * 4.0
@@ -2250,11 +2270,14 @@ func draw_spirit(spirit: Dictionary) -> void:
 	var tw := 0.5 + sin(elapsed * 4.0 + float(spirit["phase"])) * 0.5
 	draw_circle(c + Vector2(5, -6), 1.6 + tw, Color(paper_color, 0.6))
 	if player_position.distance_to(spirit["position"]) <= SOURCE_REACH:
-		var prompt := Rect2(pos + Vector2(-75, -88), Vector2(150, 40))
+		var label := spirit_prompt_label(spirit)
+		var label_w := ui_font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x
+		var box_w := maxf(150.0, label_w + 32.0)
+		var prompt := Rect2(pos + Vector2(-box_w * 0.5, -88), Vector2(box_w, 40))
 		draw_rect(Rect2(prompt.position + Vector2(3, 4), prompt.size), Color(0.0, 0.0, 0.0, 0.2), true)
 		draw_rect(prompt, Color(void_color, 0.92), true)
 		draw_line(prompt.position, prompt.position + Vector2(prompt.size.x, 0), accent_color, 1.5)
-		draw_string(ui_font, prompt.position + Vector2(16, 16), "SPIRIT", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, paper_color)
+		draw_string(ui_font, prompt.position + Vector2(16, 16), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, paper_color)
 		draw_string(ui_font, prompt.position + Vector2(16, 33), "F  COLLECT", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, muted_color)
 
 func draw_tree(cell: Vector2i) -> void:
@@ -3280,7 +3303,15 @@ func draw_level_select(viewport: Vector2) -> void:
 		draw_hud_diamond(mute_row.position + Vector2(34, 36), 10.0 if mute_focus else 6.0, accent_color if mute_focus else Color(muted_color, 0.45))
 		draw_string(ui_font, mute_row.position + Vector2(66, 44), "SFX MUTED", HORIZONTAL_ALIGNMENT_LEFT, -1, 20, paper_color if mute_focus else muted_color)
 		draw_string(ui_font, mute_row.position + Vector2(300, 44), "ON" if sfx_muted else "OFF", HORIZONTAL_ALIGNMENT_LEFT, -1, 20, danger_color if sfx_muted else safe_color)
-		var footer := "W / S focus     A / D adjust     TAB levels     L / ESC close"
+		var reset_focus := menu_setting == 2
+		var reset_row := Rect2(220, 390, 840, 72)
+		draw_rect(Rect2(reset_row.position + Vector2(4, 5), reset_row.size), Color(0.0, 0.0, 0.0, 0.22), true)
+		draw_rect(reset_row, Color(void_color, 0.98) if reset_focus else Color(ink_color, 0.96), true)
+		draw_line(reset_row.position, reset_row.position + Vector2(reset_row.size.x, 0), danger_color if reset_focus else Color(muted_color, 0.4), 2.0 if reset_focus else 1.0)
+		draw_hud_diamond(reset_row.position + Vector2(34, 36), 10.0 if reset_focus else 6.0, danger_color if reset_focus else Color(muted_color, 0.45))
+		draw_string(ui_font, reset_row.position + Vector2(66, 44), "HARD RESET", HORIZONTAL_ALIGNMENT_LEFT, -1, 20, paper_color if reset_focus else muted_color)
+		draw_string(ui_font, reset_row.position + Vector2(300, 44), "WIPES SPIRITS & RUN", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, danger_color)
+		var footer := "W / S focus     A / D adjust     ENTER reset     TAB levels     L / ESC close"
 		draw_string(ui_font, Vector2(0, 632), footer, HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 14, muted_color)
 		return
 	draw_string(ui_font, Vector2(0, 104), "SELECT LEVEL", HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 40, paper_color)
@@ -3439,9 +3470,9 @@ func draw_craft_table(viewport: Vector2) -> void:
 		var sel_recipe := recipe_for_build_kind(sel_kind)
 		var sel_missing := missing_recipe_counts(sel_recipe)
 		if recipe_built(sel_recipe):
-			var built_text := "BUILT"
+			var built_text := String(RECIPES[sel_recipe]["name"]) + " — BUILT"
 			if sel_recipe == 0 and has_life_jacket:
-				built_text = "WEARING (G TO DROP)"
+				built_text = String(RECIPES[sel_recipe]["name"]) + " — WEARING (G TO DROP)"
 			draw_string(ui_font, Vector2(px, py), built_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, safe_color)
 		elif sel_missing.is_empty():
 			draw_string(ui_font, Vector2(px, py), "PRESS ENTER TO BUILD", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, paper_color)
@@ -3513,7 +3544,8 @@ func draw_bottle_plaque(rect: Rect2) -> void:
 	draw_string(ui_font, rect.position + Vector2(47, 59), "%02d" % bottle_count, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, paper_color)
 	draw_line(rect.position + Vector2(94, 17), rect.position + Vector2(94, 59), Color(muted_color, 0.4), 1.0)
 	var jacket_unlocked := is_idea_unlocked(recipe_index_for_id("life_jacket"))
-	var jacket_label := "JACKET" if jacket_unlocked else "CRAFT"
+	var jacket_built := has_life_jacket or life_jacket_on_ground
+	var jacket_label := "JACKET" if jacket_built else "CRAFT"
 	draw_string(ui_font, rect.position + Vector2(108, 29), jacket_label, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, muted_color)
 	var jacket_color := safe_color if has_life_jacket else accent_color
 	var jacket_text := "???"
