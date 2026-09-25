@@ -104,7 +104,7 @@ components:
 
 Faceted Depths presents the dungeon as a living cut gemstone. Deep ink caverns frame a low, jewel-toned isometric field whose floor planes, walls, crystals, gate, and HUD plaques are built from hard polygons rather than conventional interface chrome.
 
-The room stays quiet and readable while semantic light supplies the drama: amber marks action, cyan marks safety and progress, and oxblood marks danger. The derived NE/SE/SW/NW player frames remain the one deliberate sprite exception; their path, source pack, and license are provenance, not palette, shape, or typography tokens.
+The room stays quiet and readable while semantic light supplies the drama: amber marks action, cyan marks safety and progress, and oxblood marks danger. Every entity, including the player, is drawn from script as hard faceted polygons aligned to the same NE/SE/SW/NW facing grammar; there is no raster sprite exception now.
 
 The run opens on Level 0, River Run: a bright outdoor riverbank where bottle sources, leaves, flowing water, and a flotation jacket replace the dungeon objective. It then moves through four authored depths: Faceted Depths, Mossglass Cistern, Ember Vault, and Starfall Reliquary. Each depth changes the mineral palette, map topology, enemy silhouette, movement speed, and health profile while preserving the same shard-and-gate objective.
 
@@ -175,7 +175,7 @@ Contact shadows are flattened diamonds beneath shards, the player, and enemies. 
 
 The recurring silhouette is a sharp 2:1 diamond. Every floor diamond is divided into two triangular facets, and wall tops repeat the same split. Wall outlines are 1–1.5 px near-black strokes with no anti-aliased softness.
 
-Crystals use a vertically stretched four-point kite with side points at 72% of the vertical radius, a darker lower half, a 1.5 px light rim, and a center seam. The player alone uses supplied pixel art at 2× scale. The 128 × 128 app icon is a faceted crystal on a void field with a 20 px rounded-square container and 4 px paper-colored crystal seams; it is the only rounded container in the system.
+Crystals use a vertically stretched four-point kite with side points at 72% of the vertical radius, a darker lower half, a 1.5 px light rim, and a center seam. The player is the original Tiny Questers warrior recreated procedurally. Its 64 × 64 pixel frames (4 facings × 4 walk frames, plus a sword sprite per facing) are baked into `PLAYER_PIXELS` as a shared 27-colour palette and compact pixel grids; each opaque pixel is drawn as a 2 × 2 rect at the sprite's original screen anchor, so the character keeps the exact original art and walk animation with no PNG loaded at runtime. The 128 × 128 app icon is a faceted cryst The 128 × 128 app icon is a faceted crystal on a void field with a 20 px rounded-square container and 4 px paper-colored crystal seams; it is the only rounded container in the system.
 
 Curves are reserved for tiny dust motes, crystal eyes, gate pulses, and attack arcs. Plaques, floors, walls, markers, crystals, and the gate otherwise use straight polygon edges and zero corner radius.
 
@@ -231,4 +231,4 @@ All visible components are custom-drawn Godot geometry in `faceted_depths.gd`; t
 - **Don't** use amber for progress or safety, or use cyan and oxblood interchangeably.
 - **Don't** show a dungeon gate in Level 0 or show a depth gate as open or cyan before all three shards are collected.
 - **Don't** add buttons, hover states, menus, or browser-only chrome to this keyboard-controlled game.
-- **Don't** promote the player asset path, license, or raster palette into UI design tokens.
+- **Don't** reintroduce a raster player sprite; the player must stay script-drawn like every other entity.

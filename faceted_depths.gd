@@ -255,6 +255,491 @@ const LEVELS := [
 	},
 ]
 
+const PLAYER_PIXELS_CHARS := "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+const PLAYER_PIXELS := {
+	"palette": [Color("000000"), Color("0a0707"), Color("1a0d07"), Color("22240a"), Color("32190d"), Color("391f10"), Color("39393a"), Color("4a2a13"), Color("523017"), Color("525354"), Color("70491e"), Color("734422"), Color("737373"), Color("744124"), Color("868686"), Color("8b522f"), Color("8f5426"), Color("8f6236"), Color("959492"), Color("a16139"), Color("bababa"), Color("c7814c"), Color("d18357"), Color("edbd7a"), Color("f4ab77"), Color("fccb9f"), Color("ffffff")],
+	"ne": [
+		{"ox": 18, "oy": 15, "rows": [
+			".....11111.......",
+			".1111FFFFJ111....",
+			"1FFJJJJJJJJJD11..",
+			".1FJJJJJJJJJJJD1.",
+			"1FFLJJJJJJJJJJ1..",
+			"1FFLLJJJJLFFFFJ1.",
+			"1DFFFFFFFFDDOFDD1",
+			"1DDDDDDODOOOPODD1",
+			".1DDDDOOPOPPPPP11",
+			"..1MOFPP1PPPP1P1.",
+			"..1MOOPPPPMMMPP1.",
+			"..1MOPPPPPPPPPO1.",
+			"...1MOOOOOOOOO1..",
+			".....1MMMMMMMM1..",
+			".....1CCCCCMMC1..",
+			".....16CC999CC1..",
+			".....16CEEEEE91..",
+			".....169CCCC991..",
+			"......15888NNN81.",
+			"......1CC99HHHC1.",
+			"......1699999991.",
+			"......17B1111171.",
+			"......111....111.",
+		]},
+		{"ox": 18, "oy": 14, "rows": [
+			".....111.........",
+			".1111FFF1111111..",
+			"1FFJJJJJJJJJDD1..",
+			"1FJJJJJJJJJJJD1..",
+			"1FFLJJJJJJJJJJ1..",
+			"1FFJLLLLJLFFFFJ1.",
+			"1DFFFFFFFFDDOFDD1",
+			"1DDDDDDODOOOPODD1",
+			"1DDDDOOPOPPPPP11.",
+			"..1MOFPP1PPPP1P1.",
+			"..1MOOPPPPMMMPP1.",
+			"..1MOPPPPPPPPPO1.",
+			"...1MOOOOOOOOO1..",
+			"....1MMMMMMMM1...",
+			".....1CCCCCMMC1..",
+			".....16CC999CC1..",
+			".....16CEEEEE91..",
+			".....169CCCC991..",
+			".....15888NNN81..",
+			"......169CCHHHC1.",
+			"......169CCC111..",
+			".......169CC11...",
+			"........117B1....",
+			"..........111....",
+		]},
+		{"ox": 18, "oy": 15, "rows": [
+			"...11111....11...",
+			".11FFFF11111D1...",
+			"1FFJJJJJJJJJD1...",
+			".1FJJJJJJJJJJJ1..",
+			"1FFJJJJJJJJJJJ1..",
+			"1FFJLJLLLLFFFFJ1.",
+			"1DFFFFFFFFDDOFDD1",
+			"1DDDDDDODOOOPODD1",
+			".1DDDDOOPOPPPPP11",
+			"..1MOFPP1PPPP1P1.",
+			"..1MOOPPPPMMMPP1.",
+			"..1MOPPPPPPPPPO1.",
+			"...1MOOOOOOOOO1..",
+			".....1MMMMMMMM1..",
+			".....1CCCCCMMC1..",
+			".....16CC999CC61.",
+			".....16CEEEEE961.",
+			".....169CCCC9961.",
+			"......15888NNN881",
+			"......1CC99HHHC91",
+			"......16999999991",
+			"......17B111117B1",
+			"......111....1111",
+		]},
+		{"ox": 18, "oy": 14, "rows": [
+			".....11111.......",
+			".1111FFFFJ111....",
+			"1FFJJJJJJJJJD11..",
+			"1FLJJJJJJJJJJD1..",
+			"1FFLJJJJJJJJJJ1..",
+			"1FFJLJJJLLFFFFJ1.",
+			"1DFFFFFFFFDDOFDD1",
+			"1DDDDDDODOOOPODD1",
+			"1DDDDOOPOPPPPP11.",
+			"..1MOFPP1PPPP1P1.",
+			"..1MOOPPPPMMMPP1.",
+			"..1MOPPPPPPPPPO1.",
+			"...1MOOOOOOOOO1..",
+			"....1MMMMMMMM1...",
+			".....1CCCCCMMC1..",
+			".....16CC999CC1..",
+			".....16CEEEEE91..",
+			".....169CCCC991..",
+			".....15888NNN81..",
+			"......169CCHHHC1.",
+			"......169CCC111..",
+			".......169CC11...",
+			"........177B1....",
+			".........111.....",
+		]},
+	],
+	"se": [
+		{"ox": 18, "oy": 15, "rows": [
+			".....11111.......",
+			".1111FFFFJ111....",
+			"1FFJJJJJJJJJD11..",
+			".1FLJJJJJJJJJJD1.",
+			"1FFLJJJJJJJJJJ1..",
+			"1FFJLJJJJJFFFFJ1.",
+			"1DFFFFFFFFDDOFDD1",
+			"1DDDDDDODOOOPODD1",
+			".1DDDOOOPOPPPPP11",
+			"..1MOP1PPPPP1PP1.",
+			"..1MOPPPMMMPPPP1.",
+			"..1MOPPPPPPPPPO1.",
+			"...1MOOOOOOOOO1..",
+			".....1MMMMMMMM1..",
+			"....196C9DDD9C61.",
+			"....166CC999CC61.",
+			"....166CEEEEE991.",
+			"....1669CCCC9991.",
+			".....1558NNNN8551",
+			".....16CC99HHHC91",
+			".....166999999991",
+			".....17B1111117B1",
+			".....111......111",
+		]},
+		{"ox": 18, "oy": 14, "rows": [
+			"...1111..........",
+			".11FFFF111111....",
+			"1FFJJJJJJJJJD1...",
+			"1FJJJJJJJJJJJ1...",
+			"1FFJJJJJJJJJJJ1..",
+			"1FFJLLLJLJFFFFJ1.",
+			"1DFFFFFFFFDDOFDD1",
+			"1DDDDDDODOOOPODD1",
+			"1DDDOOOPOPPPPP11.",
+			"..1MOP1PPPPP1PP1.",
+			"..1MOPPPMMMPPPP1.",
+			"..1MOPPPPPPPPPO1.",
+			"...1MOOOOOOOOO1..",
+			"....1MMMMMMMM1...",
+			"....196C9DDD9C61.",
+			"....166CC999CC61.",
+			"....166CEEEEE991.",
+			"....1669CCCC9991.",
+			"....1558NNNN8551.",
+			".....1111HHHHCC91",
+			".....144419999991",
+			".....122211117B1.",
+			"......2221...111.",
+		]},
+		{"ox": 18, "oy": 15, "rows": [
+			".....11111.......",
+			".1111FFFFF1111...",
+			"1FFJJJJJJJJJJJ1..",
+			".1FJJJJJJJJJJJF1.",
+			"1FFJJJJJJJJJJF1..",
+			"1FFJLJLLLJFFFFJ1.",
+			"1DFFFFFFFFDDOFDD1",
+			"1DDDDDDODOOOPODD1",
+			".1DDDOOOPOPPPPP11",
+			"..1MOP1PPPPP1PP1.",
+			"..1MOPPPMMMPPPP1.",
+			"..1MOPPPPPPPPPO1.",
+			"...1MOOOOOOOOO1..",
+			".....1MMMMMMMM1..",
+			"....196C9DDD9C61.",
+			"....166CC999CC61.",
+			"....166CEEEEE991.",
+			"....1669CCCC9991.",
+			".....1558NNNN8551",
+			".....16CC99HHHC91",
+			".....166999999991",
+			".....17B1111117B1",
+			".....111......111",
+		]},
+		{"ox": 18, "oy": 14, "rows": [
+			"...111111111.....",
+			".11FFFFFFJJD1....",
+			"1FFJJJJJJJJJD11..",
+			"1FJJJJJJJJJJJD1..",
+			"1FFJJJJJJJJJJJ1..",
+			"1FFJJJLJLLFFFFJ1.",
+			"1DFFFFFFFFDDOFDD1",
+			"1DDDDDDODOOOPODD1",
+			"1DDDOOOPOPPPPP11.",
+			"..1MOP1PPPPP1PP1.",
+			"..1MOPPPMMMPPPP1.",
+			"..1MOPPPPPPPPPO1.",
+			"...1MOOOOOOOOO1..",
+			"....1MMMMMMMM1...",
+			"....196C9DDD9C61.",
+			"....166CC999CC61.",
+			"....166CEEEEE991.",
+			"....1669CCCC9991.",
+			"....1558NNNN8551.",
+			".....1999HHHH1111",
+			".....199999914441",
+			"......1B711112221",
+			"......111...1222.",
+		]},
+	],
+	"sw": [
+		{"ox": 29, "oy": 15, "rows": [
+			".......11111.....",
+			"....111JFFFF1111.",
+			"..11DJJJJJJJJJFF1",
+			".1DJJJJJJJJJJJF1.",
+			"..1JJJJJJJJJJLFF1",
+			".1JFFFFLJJJJLLFF1",
+			"1DDFODDFFFFFFFFD1",
+			"1DDOPOOODODDDDDD1",
+			"11PPPPPOPOODDDD1.",
+			".1P1PPPP1PPFOM1..",
+			".1PPMMMPPPPOOM1..",
+			".1OPPPPPPPPPOM1..",
+			"..1OOOOOOOOOM1...",
+			"..1MMMMMMMM1.....",
+			"..1CMMCCCCC1.....",
+			"..1CC999CC61.....",
+			"..19EEEEEC61.....",
+			"..199CCCC961.....",
+			".18NNN88851......",
+			".1CHHH99CC1......",
+			".1999999961......",
+			".1711111B71......",
+			".111....111......",
+		]},
+		{"ox": 28, "oy": 14, "rows": [
+			".......111.......",
+			"...1111FFF1111111",
+			"..1FFJJJJJJJJJDD1",
+			"..1FJJJJJJJJJJJD1",
+			"1FFLJJJJJJJJJJ1..",
+			"1FFJLLLLJLFFFFJ1.",
+			"1DFFFFFFFFDDOFDD1",
+			"1DDDDDDODOOOPODD1",
+			"1DDDDOOPOPPPPP11.",
+			"1MOFPP1PPPP1P1...",
+			"1MOOPPPPMMMPP1...",
+			"1MOPPPPPPPPPO1...",
+			".1MOOOOOOOOO1....",
+			"..1MMMMMMMM1.....",
+			".1CCCCCMMC1......",
+			".16CC999CC1......",
+			".16CEEEEE91......",
+			".169CCCC991......",
+			".15888NNN81......",
+			"169CCHHHC1.......",
+			"169CCC111........",
+			".169CC11.........",
+			"..117B1..........",
+			"....111..........",
+		]},
+		{"ox": 27, "oy": 15, "rows": [
+			"......11111....11.",
+			"....11FFFF11111D1.",
+			"...1FFJJJJJJJJJD1.",
+			"..1FJJJJJJJJJJJ1..",
+			".1FFJJJJJJJJJJJ1..",
+			".1FFJLJLLLLFFFFJ1.",
+			".1DFFFFFFFFDDOFDD1",
+			".1DDDDDDODOOOPODD1",
+			"1DDDDOOPOPPPPP11..",
+			".1MOFPP1PPPP1P1...",
+			".1MOOPPPPMMMPP1...",
+			".1MOPPPPPPPPPO1...",
+			"..1MOOOOOOOOO1....",
+			"..1MMMMMMMM1......",
+			"..1CCCCCMMC1......",
+			"..16CC999CC61.....",
+			"..16CEEEEE961.....",
+			"..169CCCC9961.....",
+			".15888NNN881......",
+			".1CC99HHHC91......",
+			".16999999991......",
+			".17B111117B1......",
+			".111....1111......",
+		]},
+		{"ox": 28, "oy": 14, "rows": [
+			".......11111.....",
+			"...1111FFFFJ111..",
+			"..1FFJJJJJJJJJD11",
+			"..1FLJJJJJJJJJJD1",
+			"1FFLJJJJJJJJJJ1..",
+			"1FFJLJJJLLFFFFJ1.",
+			"1DFFFFFFFFDDOFDD1",
+			"1DDDDDDODOOOPODD1",
+			"1DDDDOOPOPPPPP11.",
+			"1MOFPP1PPPP1P1...",
+			"1MOOPPPPMMMPP1...",
+			"1MOPPPPPPPPPO1...",
+			".1MOOOOOOOOO1....",
+			"..1MMMMMMMM1.....",
+			".1CCCCCMMC1......",
+			".16CC999CC1......",
+			".16CEEEEE91......",
+			".169CCCC991......",
+			".15888NNN81......",
+			"169CCHHHC1.......",
+			"169CCC111........",
+			".169CC11.........",
+			"..177B1..........",
+			"...111...........",
+		]},
+	],
+	"nw": [
+		{"ox": 27, "oy": 15, "rows": [
+			"........11111.....",
+			"....1111FFFFJ111..",
+			"...1FFJJJJJJJJJD11",
+			"..1FLJJJJJJJJJJD1.",
+			".1FFLJJJJJJJJJJ1..",
+			".1FFJLJJJJJFFDFJ1.",
+			".1DFFFFFFFFDDDFDD1",
+			".1DDDDDDDDDDDDDDD1",
+			"1DDDDDDDDDDDDD11..",
+			".1DDDDDDDDDDDD1...",
+			".1DDDDDDDDDDDD1...",
+			".1DDDDDDDDDDDD1...",
+			"..1DDD6666DDD1....",
+			"..1669999661......",
+			".166999999961.....",
+			".169999999961.....",
+			".169999999961.....",
+			".166666666661.....",
+			"155888888551......",
+			"166669996661......",
+			"166666666661......",
+			"17B1111117B1......",
+			"111......111......",
+		]},
+		{"ox": 27, "oy": 13, "rows": [
+			"......1111........",
+			"....11FFFF111111..",
+			"...1FFJJJJJJJJJD1.",
+			"...1FJJJJJJJJJJJ1.",
+			"..1FFJJJJJJJJJJJ1.",
+			".1FFJLLLJLJFFFFJ1.",
+			".1DFFFFFFFFDDDFDD1",
+			".1DDDDDDDDDDDDDDD1",
+			".1DDDDDDDDDDDDDD1.",
+			".1DDDDDDDDDDDDDD1.",
+			".1DDDDDDDDDDDD1...",
+			".1DDDDDDDDDDDD1...",
+			".1DDDDDDDDDDDD1...",
+			"..1DDD6666DDD1....",
+			"...1666999661.....",
+			".166999999661.....",
+			".169999999961.....",
+			".169999999961.....",
+			".166666666661.....",
+			".155888888551.....",
+			"166669966661......",
+			"11111111B71.......",
+			".1111...771.......",
+			"........111.......",
+		]},
+		{"ox": 27, "oy": 15, "rows": [
+			"........11111.....",
+			"....1111FFFFF1111.",
+			"...1FFJJJJJJJJJJJ1",
+			"..1FJJJJJJJJJJJF1.",
+			".1FFJJJJJJJJJJF1..",
+			".1FFJLJLLLJFFFFD1.",
+			".1DFFFFFFFFDDDDDD1",
+			".1DDDDDDDDDDDDDDD1",
+			"1DDDDDDDDDDDDD11..",
+			".1DDDDDDDDDDDD1...",
+			".1DDDDDDDDDDDD1...",
+			".1DDDDDDDDDDDD1...",
+			"..1DDD6666DDD1....",
+			"..1669999661......",
+			".166999999961.....",
+			".169999999961.....",
+			".169999999961.....",
+			".166666666661.....",
+			"155888888551......",
+			"166699999661......",
+			"166666666661......",
+			"17B1111117B1......",
+			"111......111......",
+		]},
+		{"ox": 27, "oy": 13, "rows": [
+			"......111111111...",
+			"....11FFFFFFJJD1..",
+			"...1FFJJJJJJJJJD11",
+			"...1FJJJJJJJJJJJD1",
+			"..1FFJJJJJJJJJJJ1.",
+			".1FFJJJLJLLFFFFJ1.",
+			".1DFFFFFFFFDDDFDD1",
+			".1DDDDDDDDDDDDDDD1",
+			".1DDDDDDDDDDDDDD1.",
+			".1DDDDDDDDDDDDDD1.",
+			".1DDDDDDDDDDDD1...",
+			".1DDDDDDDDDDDD1...",
+			".1DDDDDDDDDDDD1...",
+			"..1DDD6666DDD1....",
+			"...1669999661.....",
+			".166999999661.....",
+			".169999999961.....",
+			".169999999961.....",
+			".166666666661.....",
+			".155888888551.....",
+			"166669996661......",
+			".1B71111111.......",
+			".177...1111.......",
+			".111..............",
+		]},
+	],
+	"sword_ne": {"ox": 17, "oy": 28, "rows": [
+		".............00......",
+		".............0A0.....",
+		"..00000000000GG000...",
+		".0QQQKQQQKKQKGA333000",
+		"0IIIIIIIIIIIIGG333330",
+		"..000000000000GA00000",
+		"..............0G0....",
+		"..............00.....",
+	]},
+	"sword_se": {"ox": 25, "oy": 23, "rows": [
+		"..00....",
+		"..030...",
+		"..030...",
+		".0330...",
+		".0330...",
+		".003300.",
+		"0AGAGAG0",
+		"00GGGG00",
+		"..0KI0..",
+		"..0QI0..",
+		"...0KI0.",
+		"...0KI0.",
+		"...0QI0.",
+		"...0QI0.",
+		"...0QI0.",
+		"....0KI0",
+		"....0QI0",
+		"....0QI0",
+		"....0QI0",
+		".....0I0",
+		".......0",
+	]},
+	"sword_sw": {"ox": 24, "oy": 26, "rows": [
+		".......00............",
+		"......0G0............",
+		".00000AG000000000000.",
+		"033333GGIIIIIIIIIIII0",
+		"000333AGKQKKQQQKQQQ0.",
+		"...000GG00000000000..",
+		".....0A0.............",
+		".....00..............",
+	]},
+	"sword_nw": {"ox": 30, "oy": 20, "rows": [
+		"......0..",
+		".....0I0.",
+		".....0IQ0",
+		"....0IQ0.",
+		"....0IQ0.",
+		"....0IK0.",
+		"....0IQ0.",
+		"....0IQ0.",
+		"...0IQ0..",
+		"...0IK0..",
+		"...0IK0..",
+		"...0IQ0..",
+		"...0IK0..",
+		"00GGGG00.",
+		"0GAGAGA0.",
+		".003300..",
+		"..0330...",
+		"..0330...",
+		".030.....",
+		".030.....",
+		"..00.....",
+	]},
+}
+
 var void_color := Color("060914")
 var deep_color := Color("0b1020")
 var ink_color := Color("111629")
@@ -286,8 +771,6 @@ var litter: Array[Dictionary] = []
 var item_count := 0
 var item_inventory: Dictionary = {}
 var effects: Array[Dictionary] = []
-var player_frames: Dictionary = {}
-var sword_frames: Dictionary = {}
 var player_position := Vector2.ZERO
 var player_facing := Vector2(1.0, 1.0).normalized()
 var health := MAX_HEALTH
@@ -338,21 +821,8 @@ func _ready() -> void:
 	random.seed = 260925
 	ui_font = SystemFont.new()
 	ui_font.font_names = PackedStringArray(["DejaVu Sans", "sans-serif"])
-	load_player_assets()
 	reset_game()
 	open_level_select()
-
-func load_player_assets() -> void:
-	var base_path := "res://assets/player/isometric/"
-	var frame_counts := {"ne": 4, "se": 4, "sw": 4, "nw": 4}
-	for face in frame_counts:
-		var frames: Array[Texture2D] = []
-		for frame_index in range(int(frame_counts[face])):
-			var texture := load(base_path + face + "/" + face + str(frame_index + 1) + ".png") as Texture2D
-			frames.append(texture)
-		player_frames[face] = frames
-	for direction in ["ne", "se", "sw", "nw"]:
-		sword_frames[direction] = load(base_path + "sword_" + direction + ".png") as Texture2D
 
 func reset_game() -> void:
 	level_index = 0
@@ -1834,23 +2304,47 @@ func draw_player() -> void:
 	var position := iso_to_screen(player_position)
 	draw_shadow(position, 24.0, 0.38)
 	var face := player_face_name()
-	var frames: Array = player_frames.get(face, [])
-	var frame_index := int(walk_animation) % maxi(1, frames.size())
-	var body_texture: Texture2D = frames[frame_index] if not frames.is_empty() else null
-	var sword_texture: Texture2D = sword_frames.get(face, null)
 	var tint := Color.WHITE
 	if invulnerability > 0.0 and int(elapsed * 18.0) % 2 == 0:
 		tint = Color(1.0, 0.72, 0.76, 0.46)
-	if face == "nw" and sword_texture:
-		draw_player_texture(sword_texture, position, Color(accent_color, tint.a))
-	if body_texture:
-		draw_player_texture(body_texture, position, tint)
-	else:
-		draw_crystal(position + Vector2(0, -36), 26.0, fallback_color)
-	if face != "nw" and sword_texture:
-		draw_player_texture(sword_texture, position, Color(accent_color, tint.a))
+	if face == "nw":
+		draw_pixel_sprite("sword_" + face, position, tint)
+	draw_pixel_sprite(face, position, tint)
+	if face != "nw":
+		draw_pixel_sprite("sword_" + face, position, tint)
 	if has_life_jacket:
 		draw_life_jacket(position)
+
+# Map the original 64x64 pixel sprite (assets/player/isometric) to script:
+# PLAYER_PIXELS holds a shared palette and the content grid of every walk
+# frame + sword facing. Each opaque pixel is drawn as a 2x2 rect at the same
+# screen origin the sprite used, so the character keeps the original art.
+func draw_pixel_sprite(art_key: String, position: Vector2, tint: Color) -> void:
+	var palette: Array = PLAYER_PIXELS["palette"]
+	var frame: Dictionary
+	var art = PLAYER_PIXELS[art_key]
+	if art is Array:
+		var frames: Array = art
+		frame = frames[int(walk_animation) % frames.size()]
+	else:
+		frame = art
+	var ox: int = int(frame["ox"])
+	var oy: int = int(frame["oy"])
+	var rows: Array = frame["rows"]
+	var origin := Vector2(position.x - 64.0, position.y - 90.0)
+	var scale := 2.0
+	for r in range(rows.size()):
+		var row: String = String(rows[r])
+		for c in range(row.length()):
+			var ch := row[c]
+			if ch == ".":
+				continue
+			var ci := PLAYER_PIXELS_CHARS.find(ch)
+			if ci < 0:
+				continue
+			var base: Color = palette[ci]
+			var draw_color := Color(base.r * tint.r, base.g * tint.g, base.b * tint.b, base.a * tint.a)
+			draw_rect(Rect2(origin + Vector2((ox + c) * scale, (oy + r) * scale), Vector2(scale, scale)), draw_color)
 
 func draw_life_jacket(position: Vector2) -> void:
 	for side: float in [-1.0, 1.0]:
@@ -1889,12 +2383,6 @@ func draw_dropped_life_jacket() -> void:
 		draw_rect(prompt, Color(void_color, 0.92), true)
 		draw_line(prompt.position, prompt.position + Vector2(prompt.size.x, 0), safe_color, 1.5)
 		draw_string(ui_font, prompt.position + Vector2(14, 16), "G  PICK UP", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, paper_color)
-
-func draw_player_texture(texture: Texture2D, position: Vector2, tint: Color) -> void:
-	var scale := 2.0
-	var size := texture.get_size() * scale
-	var rect := Rect2(position - Vector2(size.x * 0.5, 45.0 * scale), size)
-	draw_texture_rect(texture, rect, false, tint)
 
 func draw_enemy(index: int) -> void:
 	if index < 0 or index >= enemies.size():
