@@ -151,12 +151,12 @@ func validate_shotgun() -> bool:
 		return false
 	if not game.has_shotgun or game.shotgun_drops.size() != 0:
 		return false
-	# An enemy ahead within range is damaged by the blast.
+	# A shotgun blast deals SHOTGUN_DAMAGE (4x the sword) to an enemy ahead.
 	game.enemies.clear()
 	game.enemies.append({
 		"position": game.player_position + game.player_facing * 1.5,
 		"kind": game.enemy_kind,
-		"health": 3,
+		"health": 6,
 		"speed": 1.0,
 		"hit_flash": 0.0,
 		"attack_cooldown": 0.0,
@@ -164,14 +164,16 @@ func validate_shotgun() -> bool:
 	})
 	game.attack_cooldown = 0.0
 	game.attack()
-	if int(game.enemies[0]["health"]) != 3 - game.SHOTGUN_DAMAGE:
+	if int(game.enemies[0]["health"]) != 6 - game.SHOTGUN_DAMAGE:
+		return false
+	if game.SHOTGUN_DAMAGE != game.SWORD_DAMAGE * 4:
 		return false
 	# An enemy behind the player is outside the blast cone.
 	game.enemies.clear()
 	game.enemies.append({
 		"position": game.player_position - game.player_facing * 1.5,
 		"kind": game.enemy_kind,
-		"health": 3,
+		"health": 6,
 		"speed": 1.0,
 		"hit_flash": 0.0,
 		"attack_cooldown": 0.0,
@@ -179,7 +181,7 @@ func validate_shotgun() -> bool:
 	})
 	game.attack_cooldown = 0.0
 	game.attack()
-	if int(game.enemies[0]["health"]) != 3:
+	if int(game.enemies[0]["health"]) != 6:
 		return false
 	# Drop it and pick it back up.
 	game._drop_gear("shotgun")

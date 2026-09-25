@@ -8,10 +8,11 @@ const CAMERA_PIVOT := Vector2(640.0, 420.0)
 const PLAYER_SPEED := 3.8
 const ENEMY_SPEED := 1.45
 const ATTACK_COOLDOWN := 0.34
+const SWORD_DAMAGE := 1
 const SHOTGUN_COOLDOWN := 0.44
 const SHOTGUN_RANGE := 2.8
 const SHOTGUN_HALF_ANGLE := 0.55
-const SHOTGUN_DAMAGE := 1
+const SHOTGUN_DAMAGE := SWORD_DAMAGE * 4
 const MAX_HEALTH := 5
 const LIFE_JACKET_BOTTLES := 8
 const SOURCE_REACH := 1.35
@@ -1546,7 +1547,7 @@ func attack() -> void:
 		if distance <= 1.2 and in_facing:
 			connected = true
 			_sfx("enemy_hit")
-			enemy["health"] = int(enemy["health"]) - 1
+			enemy["health"] = int(enemy["health"]) - SWORD_DAMAGE
 			enemy["hit_flash"] = 0.18
 			spawn_burst(enemy_position, safe_color)
 			if int(enemy["health"]) <= 0:
