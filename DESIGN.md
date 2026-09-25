@@ -195,7 +195,7 @@ All visible components are custom-drawn Godot geometry in `faceted_depths.gd`; t
 - **Level select:** Full-viewport dark veil with one square selection panel, five numbered rows from `00` through `04`, a bright selected row, and keyboard-only guidance. `L` opens it during play; `W/S` or arrows move; `Enter/Space` confirms; `L/Esc` closes.
 
 ### Crafting Table
-- **Crafting table:** `B` opens a square overlay on Level 0. `W/S` selects one of four bottle-source elements, `Space` adds an available bottle to one of eight jacket slots, `X` removes the last slot, `Enter` combines a complete set, and `B/Esc` closes.
+- **Crafting table:** `B` opens a square overlay on Level 0. `W/S` selects one of four bottle-source elements, `Space` adds an available bottle to one of eight jacket slots, `X` removes the last slot, `Enter` combines a complete set, and `B/Esc` closes. A dropped life jacket can also be equipped from this overlay with `E` when nearby.
 
 ### Messages and States
 - **Message plaque:** Top-centered at `y = 108`, content width plus 44 px, 42 px high, cyan top rule, 18 px paper text, and alpha fade on exit.
@@ -206,7 +206,7 @@ All visible components are custom-drawn Godot geometry in `faceted_depths.gd`; t
 - **River:** Split cyan-blue diamonds with stepped paper glints that drift along the channel; collision remains impassable until the life jacket is crafted.
 - **Wall:** 58 px ink faces, alternating top mineral, one lightened top facet, and hard near-black seams; Level 0 hedge walls cap at 32 px and its full perimeter uses a continuous 16 px wall height.
 - **Bottle sources:** Faceted dustbins, recycling bins, crates, and coolers use hard polygon bodies; the dustbin visibly loses bottles and leaves with each search.
-- **Life jacket:** Two cyan flotation blocks with ink straps and light facets sit over the player sprite after crafting.
+- **Life jacket:** Two cyan flotation blocks with ink straps and light facets sit over the player while equipped. `G` drops them at the player’s feet and picks them up again nearby; while dropped, they render as a faceted ground item and the river becomes impassable.
 - **Shard:** A bobbing cyan crystal, flattened contact shadow, and three orbiting paper motes.
 - **Enemies:** Four procedural silhouettes share the same depth ordering and contact-shadow grammar: shardling crystals, mireling bubbles, forge golems, and astral sentinels. Hit flash turns each body paper-white.
 - **Gate:** A symmetrical faceted seal, paper core, and translucent halo. It is sealed mauve with three oxblood bars, then becomes cyan after all three shards.

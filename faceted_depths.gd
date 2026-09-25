@@ -252,6 +252,8 @@ var shards_collected := 0
 var bottle_count := 0
 var bottle_inventory: Dictionary = {}
 var has_life_jacket := false
+var life_jacket_on_ground := false
+var life_jacket_position := Vector2.ZERO
 var craft_selected := 0
 var craft_slots: Array[int] = []
 var state := "playing"
@@ -349,6 +351,8 @@ func load_level(index: int) -> void:
 	shards_collected = 0
 	bottle_count = 0
 	has_life_jacket = false
+	life_jacket_on_ground = false
+	life_jacket_position = Vector2.ZERO
 	state = "playing"
 	if level_kind == "surface":
 		message = "Search bins with F • press B to craft"
@@ -737,12 +741,47 @@ func combine_craft_elements() -> void:
 		bottle_inventory[kind] = maxi(0, int(bottle_inventory.get(kind, 0)) - 1)
 	bottle_count = maxi(0, bottle_count - LIFE_JACKET_BOTTLES)
 	has_life_jacket = true
+	life_jacket_on_ground = false
 	craft_slots.clear()
 	state = "playing"
 	message = "Life jacket woven — the river is passable"
 	message_timer = 3.0
 	spawn_burst(player_position, safe_color, 18)
 	add_shake(0.32)
+
+func drop_life_jacket() -> void:
+	if state != "playing" or level_kind != "surface" or not has_life_jacket:
+		return
+	has_life_jacket = false
+	life_jacket_on_ground = true
+	life_jacket_position = player_position
+	message = "Life jacket dropped — press G nearby to pick it up"
+	message_timer = 2.8
+	spawn_burst(life_jacket_position, accent_color, 10)
+	add_shake(0.16)
+
+func pick_up_life_jacket() -> bool:
+	if not life_jacket_on_ground:
+		return false
+	if player_position.distance_to(life_jacket_position) > 0.85:
+		message = "Move closer to the dropped life jacket"
+		message_timer = 2.0
+		return false
+	has_life_jacket = true
+	life_jacket_on_ground = false
+	if state == "crafting":
+		close_craft_table()
+	message = "Life jacket equipped"
+	message_timer = 2.0
+	spawn_burst(player_position, safe_color, 12)
+	add_shake(0.18)
+	return true
+
+func toggle_life_jacket() -> void:
+	if has_life_jacket:
+		drop_life_jacket()
+	else:
+		pick_up_life_jacket()
 
 func update_surface_level() -> void:
 	if state != "playing":
@@ -838,6 +877,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				add_craft_element()
 			elif keycode == KEY_ENTER or keycode == KEY_KP_ENTER:
 				combine_craft_elements()
+			elif keycode == KEY_E and life_jacket_on_ground:
+				pick_up_life_jacket()
 			elif keycode == KEY_X or keycode == KEY_BACKSPACE or keycode == KEY_DELETE:
 				remove_last_craft_element()
 			elif keycode == KEY_B or keycode == KEY_ESCAPE:
@@ -847,6 +888,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				search_bottle_source()
 			elif level_kind == "surface" and keycode == KEY_B:
 				open_craft_table()
+			elif level_kind == "surface" and keycode == KEY_G:
+				toggle_life_jacket()
 			elif keycode == KEY_Q:
 				camera_angle = clampf(camera_angle + deg_to_rad(15.0), -PI, PI)
 			elif keycode == KEY_E:
@@ -1108,6 +1151,11 @@ func draw_depth_sorted() -> void:
 		"depth": iso_to_screen(Vector2(exit_cell) + Vector2(0.5, 0.5)).y,
 		"kind": "exit" if level_kind == "surface" else "gate",
 	})
+	if life_jacket_on_ground:
+		drawables.append({
+			"depth": iso_to_screen(life_jacket_position).y,
+			"kind": "dropped_jacket",
+		})
 	drawables.append({
 		"depth": iso_to_screen(player_position).y,
 		"kind": "player",
@@ -1135,6 +1183,8 @@ func draw_depth_sorted() -> void:
 				draw_surface_exit()
 			"gate":
 				draw_gate()
+			"dropped_jacket":
+				draw_dropped_life_jacket()
 			"player":
 				draw_player()
 			"enemy":
@@ -1394,6 +1444,29 @@ func draw_life_jacket(position: Vector2) -> void:
 		draw_polyline(points, ink_color, 1.5, true)
 		draw_line(center + Vector2(-8, -8), center + Vector2(8, -8), ink_color, 2.0)
 
+func draw_dropped_life_jacket() -> void:
+	var position := iso_to_screen(life_jacket_position)
+	draw_shadow(position, 22.0, 0.34)
+	for side: float in [-1.0, 1.0]:
+		var center := position + Vector2(side * 11.0, -8.0)
+		var points := PackedVector2Array([
+			center + Vector2(-10, -6),
+			center + Vector2(8, -6),
+			center + Vector2(13, 0),
+			center + Vector2(8, 7),
+			center + Vector2(-9, 7),
+		])
+		draw_colored_polygon(points, safe_color)
+		draw_colored_polygon(PackedVector2Array([points[0], points[1], center + Vector2(9, 2), center + Vector2(-8, 4)]), safe_color.lightened(0.2))
+		draw_polyline(points, ink_color, 1.5, true)
+		draw_line(center + Vector2(-6, 0), center + Vector2(6, 0), ink_color, 2.0)
+	if player_position.distance_to(life_jacket_position) <= 0.85:
+		var prompt := Rect2(position + Vector2(-48, -57), Vector2(96, 23))
+		draw_rect(Rect2(prompt.position + Vector2(3, 4), prompt.size), Color(0.0, 0.0, 0.0, 0.22), true)
+		draw_rect(prompt, Color(void_color, 0.92), true)
+		draw_line(prompt.position, prompt.position + Vector2(prompt.size.x, 0), safe_color, 1.5)
+		draw_string(ui_font, prompt.position + Vector2(14, 16), "G  PICK UP", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, paper_color)
+
 func draw_player_texture(texture: Texture2D, position: Vector2, tint: Color) -> void:
 	var scale := 2.0
 	var size := texture.get_size() * scale
@@ -1644,6 +1717,9 @@ func draw_craft_table(viewport: Vector2) -> void:
 	draw_string(ui_font, Vector2(676, 420), progress_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, progress_color)
 	if has_life_jacket:
 		draw_string(ui_font, Vector2(676, 456), "LIFE JACKET COMPLETE", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, safe_color)
+	elif life_jacket_on_ground:
+		var dropped_hint := "DROPPED ON GROUND" if player_position.distance_to(life_jacket_position) > 0.85 else "PRESS E TO EQUIP"
+		draw_string(ui_font, Vector2(676, 456), dropped_hint, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, accent_color)
 	elif craft_slots.size() >= LIFE_JACKET_BOTTLES:
 		draw_string(ui_font, Vector2(676, 456), "PRESS ENTER TO COMBINE", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, paper_color)
 	else:
@@ -1652,7 +1728,8 @@ func draw_craft_table(viewport: Vector2) -> void:
 		draw_string(ui_font, Vector2(0, 526), message, HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 15, paper_color)
 	var controls_rect := Rect2(300, 574, 680, 56)
 	draw_plaque(controls_rect, slate_light_color)
-	draw_string(ui_font, Vector2(0, 608), "W/S SELECT     SPACE ADD     X REMOVE     ENTER COMBINE     B/ESC CLOSE", HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 13, muted_color)
+	var controls_text := "E EQUIP LIFE JACKET     B/ESC CLOSE" if life_jacket_on_ground else "W/S SELECT     SPACE ADD     X REMOVE     ENTER COMBINE     B/ESC CLOSE"
+	draw_string(ui_font, Vector2(0, 608), controls_text, HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 13, muted_color)
 
 func draw_hud(viewport: Vector2) -> void:
 	if state == "level_select":
@@ -1687,7 +1764,7 @@ func draw_hud(viewport: Vector2) -> void:
 			draw_hud_diamond(center, 10.0, danger_color.lightened(0.08))
 		else:
 			draw_hud_diamond(center, 10.0, Color(muted_color, 0.2))
-	var controls := "WASD MOVE  F SEARCH  B TABLE  DRAG PAN  WHEEL ZOOM  Q/E YAW  C RESET  L LEVELS  R RESTART" if level_kind == "surface" else "WASD MOVE  SPACE STRIKE  DRAG PAN  WHEEL ZOOM  Q/E YAW  C RESET  L LEVELS  R RESTART"
+	var controls := "WASD MOVE  F SEARCH  B TABLE  G DROP/TAKE  DRAG PAN  WHEEL ZOOM  Q/E YAW  C RESET  L LEVELS  R RESTART" if level_kind == "surface" else "WASD MOVE  SPACE STRIKE  DRAG PAN  WHEEL ZOOM  Q/E YAW  C RESET  L LEVELS  R RESTART"
 	var controls_size := ui_font.get_string_size(controls, HORIZONTAL_ALIGNMENT_LEFT, -1, 13)
 	var controls_rect := Rect2(viewport.x - controls_size.x - 68, viewport.y - 54, controls_size.x + 38, 30)
 	draw_plaque(controls_rect, slate_light_color)
@@ -1708,6 +1785,8 @@ func draw_bottle_plaque(rect: Rect2) -> void:
 	var jacket_text := str(LIFE_JACKET_BOTTLES - bottle_count) + " MORE"
 	if bottle_count >= LIFE_JACKET_BOTTLES:
 		jacket_text = "CAN CRAFT"
+	if life_jacket_on_ground:
+		jacket_text = "DROPPED"
 	if has_life_jacket:
 		jacket_text = "READY"
 	draw_string(ui_font, rect.position + Vector2(108, 55), jacket_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, jacket_color)

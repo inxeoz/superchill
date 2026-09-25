@@ -257,7 +257,25 @@ func validate_surface_level() -> bool:
 	if game.craft_slots.size() != game.LIFE_JACKET_BOTTLES:
 		return false
 	game.combine_craft_elements()
-	if not game.has_life_jacket or game.state != "playing" or game.bottle_count != 0 or not game.craft_slots.is_empty():
+	if not game.has_life_jacket or game.state != "playing" or game.bottle_count != 0 or not game.craft_slots.is_empty() or game.life_jacket_on_ground:
+		return false
+	var drop_position: Vector2 = game.player_position
+	game.toggle_life_jacket()
+	if game.has_life_jacket or not game.life_jacket_on_ground or game.life_jacket_position != drop_position:
+		return false
+	if game.can_occupy(water_position, 0.22):
+		return false
+	game.player_position = drop_position + Vector2(2.0, 0.0)
+	game.toggle_life_jacket()
+	if game.has_life_jacket or not game.life_jacket_on_ground:
+		return false
+	game.player_position = drop_position
+	game.open_craft_table()
+	if not game.pick_up_life_jacket() or game.state != "playing" or not game.has_life_jacket or game.life_jacket_on_ground:
+		return false
+	game.drop_life_jacket()
+	game.toggle_life_jacket()
+	if not game.has_life_jacket or game.life_jacket_on_ground:
 		return false
 	if not game.can_occupy(water_position, 0.22):
 		return false

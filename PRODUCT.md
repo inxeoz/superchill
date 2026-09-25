@@ -24,7 +24,7 @@ Godot 4.7, desktop-first with a web-export-friendly implementation, rendered at 
 
 ## Capabilities and Constraints
 
-The run includes a deterministic combat-free Level 0 plus four connected dungeon depths, a launch-time level selector, bottle gathering, bottle-jacket crafting, jacket-gated river crossing, themed enemy behavior, three-shard objectives, and level exits. Desktop and web targets must share the same gameplay code. Only supplied assets with known redistribution terms may ship; other packs remain blocked pending license confirmation.
+The run includes a deterministic combat-free Level 0 plus four connected dungeon depths, a launch-time level selector, bottle gathering, bottle-jacket crafting, drop-and-pickup equipment handling, jacket-gated river crossing, themed enemy behavior, three-shard objectives, and level exits. Desktop and web targets must share the same gameplay code. Only supplied assets with known redistribution terms may ship; other packs remain blocked pending license confirmation.
 
 ## Evidence on Hand
 
