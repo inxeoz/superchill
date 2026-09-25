@@ -3007,12 +3007,15 @@ func draw_bottle_plaque(rect: Rect2) -> void:
 	draw_string(ui_font, rect.position + Vector2(108, 29), "JACKET", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, muted_color)
 	var jacket_color := safe_color if has_life_jacket else accent_color
 	var jacket_text := str(maxi(0, LIFE_JACKET_BOTTLES - total_collected_items())) + " MORE"
-	if total_collected_items() >= LIFE_JACKET_BOTTLES:
-		jacket_text = "CAN CRAFT"
-	if life_jacket_on_ground:
-		jacket_text = "DROPPED"
 	if has_life_jacket:
 		jacket_text = "WEARING"
+	elif life_jacket_on_ground:
+		jacket_text = "DROPPED"
+	elif total_collected_items() >= LIFE_JACKET_BOTTLES:
+		if is_idea_unlocked(recipe_index_for_id("life_jacket")):
+			jacket_text = "CAN CRAFT"
+		else:
+			jacket_text = "CAN CRAFT SOMETHING"
 	draw_string(ui_font, rect.position + Vector2(108, 55), jacket_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, jacket_color)
 	draw_line(rect.position + Vector2(18, 72), rect.position + Vector2(rect.size.x - 18, 72), Color(muted_color, 0.4), 1.0)
 	draw_leaf(rect.position + Vector2(29, 88), 0.55, floor_petrol_color)
