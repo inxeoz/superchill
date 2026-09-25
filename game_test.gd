@@ -127,8 +127,132 @@ func run_test() -> void:
 	if not validate_drop_select():
 		quit(1)
 		return
+	if not validate_shotgun():
+		quit(1)
+		return
+	if not validate_gear_switch():
+		quit(1)
+		return
 	print("game_test: ok")
 	quit(0)
+
+func validate_shotgun() -> bool:
+	game.load_level(1)
+	if not game.has_sword:
+		return false
+	if game.has_shotgun or game.shotgun_drops.size() != 1:
+		return false
+	var drop_cell: Vector2i = game.cell_at(game.shotgun_drops[0])
+	if not game.walkable.has(drop_cell):
+		return false
+	# Pick the shotgun up with the gear pickup.
+	game.player_position = game.shotgun_drops[0]
+	if not game._pickup_gear("shotgun"):
+		return false
+	if not game.has_shotgun or game.shotgun_drops.size() != 0:
+		return false
+	# An enemy ahead within range is damaged by the blast.
+	game.enemies.clear()
+	game.enemies.append({
+		"position": game.player_position + game.player_facing * 1.5,
+		"kind": game.enemy_kind,
+		"health": 3,
+		"speed": 1.0,
+		"hit_flash": 0.0,
+		"attack_cooldown": 0.0,
+		"phase": 0.0,
+	})
+	game.attack_cooldown = 0.0
+	game.attack()
+	if int(game.enemies[0]["health"]) != 3 - game.SHOTGUN_DAMAGE:
+		return false
+	# An enemy behind the player is outside the blast cone.
+	game.enemies.clear()
+	game.enemies.append({
+		"position": game.player_position - game.player_facing * 1.5,
+		"kind": game.enemy_kind,
+		"health": 3,
+		"speed": 1.0,
+		"hit_flash": 0.0,
+		"attack_cooldown": 0.0,
+		"phase": 0.0,
+	})
+	game.attack_cooldown = 0.0
+	game.attack()
+	if int(game.enemies[0]["health"]) != 3:
+		return false
+	# Drop it and pick it back up.
+	game._drop_gear("shotgun")
+	if game.has_shotgun or game.shotgun_drops.size() != 1:
+		return false
+	game.player_position = game.shotgun_drops[0]
+	if not game._pickup_gear("shotgun"):
+		return false
+	# Every dungeon level drops a single reachable gun on a walkable cell.
+	for level_index in [1, 2, 3, 4]:
+		game.load_level(level_index)
+		if game.has_shotgun or game.shotgun_drops.size() != 1:
+			return false
+		if not game.walkable.has(game.cell_at(game.shotgun_drops[0])):
+			return false
+	# The jungle level drops two guns on walkable cells.
+	var jungle_index: int = game.LEVELS.size() - 1
+	game.load_level(jungle_index)
+	if game.has_shotgun or game.shotgun_drops.size() != 2:
+		return false
+	for drop in game.shotgun_drops:
+		if not game.walkable.has(game.cell_at(drop)):
+			return false
+	# Picking one jungle gun leaves the other on the ground.
+	game.player_position = game.shotgun_drops[0]
+	if not game._pickup_gear("shotgun"):
+		return false
+	if not game.has_shotgun or game.shotgun_drops.size() != 1:
+		return false
+	return true
+
+func validate_gear_switch() -> bool:
+	game.load_level(1)
+	if game.active_weapon != "sword":
+		return false
+	# Picking up the level's shotgun makes it the main weapon.
+	game.player_position = game.shotgun_drops[0]
+	if not game._pickup_gear("shotgun"):
+		return false
+	if game.active_weapon != "shotgun":
+		return false
+	# ENTER fires the shotgun: it adds a muzzle + pellet burst effect pair.
+	game.attack_cooldown = 0.0
+	var before_shotgun: int = game.effects.size()
+	game.attack()
+	if game.effects.size() != before_shotgun + 2:
+		return false
+	if String(game.effects[game.effects.size() - 1]["kind"]) != "pellets":
+		return false
+	# Open the gear menu and set SWORD back as the main weapon.
+	game.handle_gear_key()
+	if game.state != "drop_select":
+		return false
+	var sword_index := -1
+	for i in range(game.drop_gear_ids.size()):
+		if String(game.drop_gear_ids[i]) == "sword":
+			sword_index = i
+	if sword_index < 0:
+		return false
+	game.drop_selected = sword_index
+	game.set_main_gear()
+	if game.state != "drop_select" or game.active_weapon != "sword":
+		return false
+	# Close the menu; ENTER now slashes (a single slash effect).
+	game.close_drop_select()
+	game.attack_cooldown = 0.0
+	var before_slash: int = game.effects.size()
+	game.attack()
+	if game.effects.size() != before_slash + 1:
+		return false
+	if String(game.effects[game.effects.size() - 1]["kind"]) != "slash":
+		return false
+	return true
 
 func validate_input_rotation() -> bool:
 	game.set_process(false)

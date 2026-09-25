@@ -8,6 +8,10 @@ const CAMERA_PIVOT := Vector2(640.0, 420.0)
 const PLAYER_SPEED := 3.8
 const ENEMY_SPEED := 1.45
 const ATTACK_COOLDOWN := 0.34
+const SHOTGUN_COOLDOWN := 0.44
+const SHOTGUN_RANGE := 2.8
+const SHOTGUN_HALF_ANGLE := 0.55
+const SHOTGUN_DAMAGE := 1
 const MAX_HEALTH := 5
 const LIFE_JACKET_BOTTLES := 8
 const SOURCE_REACH := 1.35
@@ -780,6 +784,60 @@ const PLAYER_PIXELS := {
 		".030.....",
 		"..00.....",
 	]},
+	"shotgun_ne": {"ox": 30, "oy": 21, "rows": [
+		"................",
+		"................",
+		"..00000000000000",
+		"..0EEEEEEEEEEEE0",
+		".000CCCCCCCCCC0.",
+		".00...KK000.....",
+		".......00.......",
+	]},
+	"shotgun_sw": {"ox": 16, "oy": 21, "rows": [
+		"................",
+		"................",
+		"00000000000000..",
+		"0EEEEEEEEEEEE0..",
+		".0CCCCCCCCCC000.",
+		".....000KK...00.",
+		".......00.......",
+	]},
+	"shotgun_nw": {"ox": 32, "oy": 13, "rows": [
+		"...0...",
+		"..0E0..",
+		"..0E0..",
+		"..0E0..",
+		"..0E0..",
+		"..0E0..",
+		"..0E0..",
+		"..0E0..",
+		"..0E0..",
+		"..0E0..",
+		"00C0...",
+		"0CC000.",
+		"000000.",
+		"0C00...",
+		".......",
+		".......",
+	]},
+	"shotgun_se": {"ox": 23, "oy": 19, "rows": [
+		".......",
+		".......",
+		"0C00...",
+		"000000.",
+		"0CC000.",
+		"00C0...",
+		"..0E0..",
+		"..0E0..",
+		"..0E0..",
+		"..0E0..",
+		"..0E0..",
+		"..0E0..",
+		"..0E0..",
+		"..0E0..",
+		"..0E0..",
+		"...0...",
+	]},
 }
 
 var void_color := Color("060914")
@@ -829,6 +887,9 @@ var fishing_catcher_position := Vector2.ZERO
 var has_sword := true
 var sword_on_ground := false
 var sword_position := Vector2.ZERO
+var has_shotgun := false
+var shotgun_drops: Array = []
+var active_weapon := "sword"
 var drop_selected := 0
 var drop_gear_ids: Array = []
 var craft_selected := 0
@@ -1093,6 +1154,13 @@ func load_level(index: int) -> void:
 	has_sword = true
 	sword_on_ground = false
 	sword_position = Vector2.ZERO
+	has_shotgun = false
+	shotgun_drops.clear()
+	active_weapon = "sword"
+	if level_theme == "jungle":
+		shotgun_drops = find_gun_drop_cells(2)
+	elif level_kind != "surface":
+		shotgun_drops = find_gun_drop_cells(1)
 	state = "playing"
 	if level_kind == "surface":
 		message = "Pick up gear with F • press B to craft"
@@ -1253,6 +1321,62 @@ func build_walkable() -> void:
 			if row[x] == "~" or row[x] == "F":
 				water_cells[cell] = true
 
+func find_gun_drop_cells(count: int) -> Array:
+	# Walkable cells near the player start, free of spawns/shards/spirits,
+	# so each gun is a clear, in-reach pickup. Distinct neighbouring cells.
+	var blocked: Dictionary = {}
+	for c in enemy_spawns:
+		blocked[c] = true
+	for c in shard_cells:
+		blocked[c] = true
+	for c in spirit_cells:
+		blocked[c] = true
+	var results: Array = []
+	var seen: Dictionary = {}
+	for radius: int in [1, 2, 3]:
+		for dy: int in range(-radius, radius + 1):
+			for dx: int in range(-radius, radius + 1):
+				if absi(dx) != radius and absi(dy) != radius:
+					continue
+				var c := start_cell + Vector2i(dx, dy)
+				if walkable.has(c) and not water_cells.has(c) and not solid_cells.has(c) and not blocked.has(c) and c != start_cell and not seen.has(c):
+					seen[c] = true
+					results.append(Vector2(c) + Vector2(0.5, 0.5))
+					if results.size() >= count:
+						return results
+	if results.is_empty():
+		results.append(Vector2(start_cell) + Vector2(0.5, 0.5))
+	return results
+
+func _nearest_shotgun_drop() -> Vector2:
+	var nearest: Vector2 = Vector2.ZERO
+	var best := INF
+	for drop_position in shotgun_drops:
+		var d: float = player_position.distance_to(drop_position)
+		if d < best:
+			best = d
+			nearest = drop_position
+	return nearest
+
+func _remove_nearest_shotgun_drop() -> void:
+	var best_index := -1
+	var best := INF
+	for index in range(shotgun_drops.size()):
+		var d: float = player_position.distance_to(shotgun_drops[index])
+		if d < best:
+			best = d
+			best_index = index
+	if best_index >= 0:
+		shotgun_drops.remove_at(best_index)
+
+func _recompute_active_weapon() -> void:
+	# Keep the active weapon valid after a drop: fall back to the other held
+	# weapon, or clear it when the last weapon is gone.
+	if active_weapon == "sword" and not has_sword:
+		active_weapon = "shotgun" if has_shotgun else ""
+	elif active_weapon == "shotgun" and not has_shotgun:
+		active_weapon = "sword" if has_sword else ""
+
 func _process(delta: float) -> void:
 	if paused:
 		elapsed += delta
@@ -1393,8 +1517,12 @@ func update_enemies(delta: float) -> void:
 func attack() -> void:
 	if state != "playing" or attack_cooldown > 0.0:
 		return
-	if not has_sword:
-		message = "You have no weapon — pick up your sword"
+	if active_weapon == "shotgun" and has_shotgun:
+		attack_cooldown = SHOTGUN_COOLDOWN
+		fire_shotgun()
+		return
+	if not (active_weapon == "sword" and has_sword):
+		message = "No main weapon selected — pick up your sword"
 		message_timer = 2.0
 		return
 	attack_cooldown = ATTACK_COOLDOWN
@@ -1427,6 +1555,49 @@ func attack() -> void:
 				enemies.remove_at(index)
 	if connected:
 		add_shake(0.28)
+
+func fire_shotgun() -> void:
+	var muzzle := player_position + player_facing * 0.55
+	effects.append({
+		"kind": "muzzle",
+		"position": muzzle,
+		"direction": player_facing,
+		"age": 0.0,
+		"life": 0.1,
+		"color": accent_color,
+	})
+	effects.append({
+		"kind": "pellets",
+		"position": muzzle,
+		"direction": player_facing,
+		"age": 0.0,
+		"life": 0.22,
+		"color": accent_color,
+	})
+	_sfx("attack")
+	var hit_any := false
+	for index in range(enemies.size() - 1, -1, -1):
+		var enemy := enemies[index]
+		var enemy_position: Vector2 = enemy["position"]
+		var offset := enemy_position - player_position
+		var distance := offset.length()
+		if distance > SHOTGUN_RANGE:
+			continue
+		var in_cone := distance < 0.001 or player_facing.dot(offset / distance) > cos(SHOTGUN_HALF_ANGLE)
+		if not in_cone:
+			continue
+		hit_any = true
+		_sfx("enemy_hit")
+		enemy["health"] = int(enemy["health"]) - SHOTGUN_DAMAGE
+		enemy["hit_flash"] = 0.18
+		spawn_burst(enemy_position, safe_color)
+		if int(enemy["health"]) <= 0:
+			spawn_burst(enemy_position, danger_color, 10)
+			_sfx("enemy_death")
+			enemies.remove_at(index)
+	if hit_any:
+		add_shake(0.3)
+	add_shake(0.18)
 
 func hurt_player() -> void:
 	if state != "playing" or invulnerability > 0.0:
@@ -1827,7 +1998,7 @@ func build_selected() -> void:
 	add_shake(0.32)
 	_sfx("craft_build")
 
-const GEAR_IDS := ["life_jacket", "fishing_catcher", "sword"]
+const GEAR_IDS := ["life_jacket", "fishing_catcher", "sword", "shotgun"]
 
 func _gear_worn(id: String) -> bool:
 	match id:
@@ -1837,6 +2008,8 @@ func _gear_worn(id: String) -> bool:
 			return has_fishing_catcher
 		"sword":
 			return has_sword
+		"shotgun":
+			return has_shotgun
 	return false
 
 func _gear_on_ground(id: String) -> bool:
@@ -1847,6 +2020,8 @@ func _gear_on_ground(id: String) -> bool:
 			return fishing_catcher_on_ground
 		"sword":
 			return sword_on_ground
+		"shotgun":
+			return shotgun_drops.size() > 0
 	return false
 
 func _gear_position(id: String) -> Vector2:
@@ -1857,6 +2032,8 @@ func _gear_position(id: String) -> Vector2:
 			return fishing_catcher_position
 		"sword":
 			return sword_position
+		"shotgun":
+			return _nearest_shotgun_drop()
 	return Vector2.ZERO
 
 func _gear_label(id: String) -> String:
@@ -1867,6 +2044,8 @@ func _gear_label(id: String) -> String:
 			return "FISHING CATCHER"
 		"sword":
 			return "SWORD"
+		"shotgun":
+			return "SHOTGUN"
 	return id.to_upper()
 
 func _worn_gear_ids() -> Array:
@@ -1892,6 +2071,10 @@ func _drop_gear(id: String) -> void:
 			has_sword = false
 			sword_on_ground = true
 			sword_position = player_position
+		"shotgun":
+			has_shotgun = false
+			shotgun_drops.append(player_position)
+	_recompute_active_weapon()
 	message = "Dropped " + _gear_label(id)
 	message_timer = 2.8
 	spawn_burst(player_position, accent_color, 10)
@@ -1915,6 +2098,11 @@ func _pickup_gear(id: String) -> bool:
 		"sword":
 			has_sword = true
 			sword_on_ground = false
+			active_weapon = "sword"
+		"shotgun":
+			has_shotgun = true
+			_remove_nearest_shotgun_drop()
+			active_weapon = "shotgun"
 	if state == "crafting":
 		close_craft_table()
 	message = "Equipped"
@@ -1969,6 +2157,29 @@ func confirm_drop_selection() -> void:
 	state = "playing"
 	_sfx("menu_confirm")
 	_drop_gear(id)
+
+func _is_weapon(id: String) -> bool:
+	return id == "sword" or id == "shotgun"
+
+func set_main_gear() -> void:
+	if state != "drop_select":
+		return
+	var id := String(drop_gear_ids[clampi(drop_selected, 0, drop_gear_ids.size() - 1)])
+	if not _gear_worn(id):
+		return
+	if not _is_weapon(id):
+		message = "Only weapons can be main gear"
+		message_timer = 2.0
+		return
+	if active_weapon == id:
+		message = _gear_label(id) + " is already your main gear"
+		message_timer = 2.0
+		return
+	active_weapon = id
+	message = "Main gear: " + _gear_label(id)
+	message_timer = 2.0
+	spawn_burst(player_position, accent_color, 8)
+	_sfx("equip")
 
 func close_drop_select() -> void:
 	if state != "drop_select":
@@ -2135,8 +2346,10 @@ func _unhandled_input(event: InputEvent) -> void:
 				elif keycode == KEY_DOWN or keycode == KEY_S:
 					drop_selected = posmod(drop_selected + 1, drop_gear_ids.size())
 					_sfx("menu_move")
-				elif keycode == KEY_ENTER or keycode == KEY_KP_ENTER or keycode == KEY_SPACE:
+				elif keycode == KEY_ENTER or keycode == KEY_KP_ENTER:
 					confirm_drop_selection()
+				elif keycode == KEY_SPACE:
+					set_main_gear()
 				elif keycode == KEY_ESCAPE or keycode == KEY_G or keycode == KEY_B:
 					close_drop_select()
 		else:
@@ -2145,7 +2358,7 @@ func _unhandled_input(event: InputEvent) -> void:
 					try_pick_litter()
 			elif level_kind == "surface" and keycode == KEY_B:
 				open_craft_table()
-			elif level_kind == "surface" and keycode == KEY_G:
+			elif keycode == KEY_G:
 				handle_gear_key()
 			elif keycode == KEY_ENTER or keycode == KEY_KP_ENTER:
 				attack()
@@ -2626,6 +2839,13 @@ func draw_depth_sorted() -> void:
 			"depth": iso_to_screen(sword_position).y,
 			"kind": "dropped_sword",
 		})
+	if shotgun_drops.size() > 0:
+		for drop_position in shotgun_drops:
+			drawables.append({
+				"depth": iso_to_screen(drop_position).y,
+				"kind": "dropped_shotgun",
+				"position": drop_position,
+			})
 	drawables.append({
 		"depth": iso_to_screen(player_position).y,
 		"kind": "player",
@@ -2671,6 +2891,8 @@ func draw_depth_sorted() -> void:
 				draw_dropped_fishing_catcher()
 			"dropped_sword":
 				draw_dropped_sword()
+			"dropped_shotgun":
+				draw_dropped_shotgun(drawable["position"])
 			"player":
 				draw_player()
 			"enemy":
@@ -3102,12 +3324,16 @@ func draw_player() -> void:
 		draw_drowning_overlay(base, progress)
 	else:
 		if face == "nw":
-			if has_sword:
+			if has_sword and active_weapon == "sword":
 				draw_pixel_sprite("sword_" + face, frame_index, box, tint)
+			if has_shotgun and active_weapon == "shotgun":
+				draw_pixel_sprite("shotgun_" + face, frame_index, box, tint)
 		draw_pixel_sprite(face, frame_index, box, tint)
 		if face != "nw":
-			if has_sword:
+			if has_sword and active_weapon == "sword":
 				draw_pixel_sprite("sword_" + face, frame_index, box, tint)
+			if has_shotgun and active_weapon == "shotgun":
+				draw_pixel_sprite("shotgun_" + face, frame_index, box, tint)
 	if has_life_jacket and not drowning:
 		# keep the jacket aligned to the grounded body
 		var dy: float = box.y - (spring.y - 90.0)
@@ -3300,6 +3526,27 @@ func draw_dropped_sword() -> void:
 	if player_position.distance_to(sword_position) <= 0.85:
 		draw_dropped_prompt(position, "SWORD", accent_color)
 
+func draw_dropped_shotgun(drop_position: Vector2) -> void:
+	var position := iso_to_screen(drop_position)
+	draw_shadow(position, 22.0, 0.3)
+	# Same pixel-art shotgun the character wields, so the pickup matches it.
+	draw_sprite_centered("shotgun_ne", position, Color.WHITE)
+	if player_position.distance_to(drop_position) <= 0.85:
+		draw_dropped_prompt(position, "SHOTGUN", accent_color)
+
+func draw_sprite_centered(art_key: String, position: Vector2, tint: Color) -> void:
+	var frame: Dictionary = PLAYER_PIXELS[art_key]
+	var ox: int = int(frame["ox"])
+	var oy: int = int(frame["oy"])
+	var rows: Array = frame["rows"]
+	var w := 0
+	for row in rows:
+		w = maxi(w, String(row).length())
+	var h := rows.size()
+	var scale := 2.0
+	var origin := position - Vector2((ox + w * 0.5) * scale, (oy + h * 0.5) * scale)
+	draw_pixel_sprite(art_key, 0, origin, tint)
+
 func draw_enemy(index: int) -> void:
 	if index < 0 or index >= enemies.size():
 		return
@@ -3445,6 +3692,28 @@ func draw_effects() -> void:
 			var screen_direction := Vector2(rotated_direction.x - rotated_direction.y, rotated_direction.x + rotated_direction.y).normalized()
 			var start_angle := atan2(screen_direction.y, screen_direction.x) - 0.85
 			draw_arc(position + Vector2(0, -22), 34.0 + progress * 18.0, start_angle, start_angle + 1.7, 24, color, 7.0 * (1.0 - progress) + 1.0, true)
+		elif effect["kind"] == "muzzle":
+			var direction: Vector2 = effect["direction"]
+			var rotated_direction := direction.rotated(camera_angle)
+			var screen_direction := Vector2(rotated_direction.x - rotated_direction.y, rotated_direction.x + rotated_direction.y).normalized()
+			var muzzle_pos := position + Vector2(0, -32)
+			draw_circle(muzzle_pos, 2.5, color, true)
+			for i in range(5):
+				var a := atan2(screen_direction.y, screen_direction.x) + (i - 2) * 0.28
+				draw_line(muzzle_pos, muzzle_pos + Vector2(cos(a), sin(a)) * (7.0 + 9.0 * progress), color, 2.0)
+		elif effect["kind"] == "pellets":
+			var direction: Vector2 = effect["direction"]
+			var rotated_direction := direction.rotated(camera_angle)
+			var screen_direction := Vector2(rotated_direction.x - rotated_direction.y, rotated_direction.x + rotated_direction.y).normalized()
+			var muzzle_pos := position + Vector2(0, -30)
+			var spread := SHOTGUN_HALF_ANGLE * 0.85
+			for i in range(6):
+				var t := float(i) / 5.0 - 0.5
+				var a := atan2(screen_direction.y, screen_direction.x) + t * spread * 2.0
+				var pellet_dir := Vector2(cos(a), sin(a))
+				var from := muzzle_pos + pellet_dir * (5.0 + progress * 16.0)
+				var to := muzzle_pos + pellet_dir * (10.0 + progress * 30.0)
+				draw_line(from, to, color, 2.0)
 		else:
 			var count := int(effect["phase"])
 			for index in range(count):
@@ -3590,11 +3859,12 @@ func draw_drop_select(viewport: Vector2) -> void:
 	draw_rect(panel, Color(void_color, 0.98), true)
 	draw_line(panel.position, panel.position + Vector2(panel.size.x, 0), accent_color, 2.0)
 	draw_line(panel.position + Vector2(0, panel.size.y), panel.position + panel.size, Color(accent_color, 0.35), 1.0)
-	draw_string(ui_font, Vector2(0, 104), "DROP GEAR", HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 40, paper_color)
-	draw_string(ui_font, Vector2(0, 138), "Choose which item to drop", HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 16, muted_color)
+	draw_string(ui_font, Vector2(0, 104), "GEAR", HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 40, paper_color)
+	draw_string(ui_font, Vector2(0, 138), "Set main weapon or drop an item", HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 16, muted_color)
 	for row_index in range(drop_gear_ids.size()):
 		var id := String(drop_gear_ids[row_index])
 		var selected := row_index == drop_selected
+		var is_main := _is_weapon(id) and active_weapon == id
 		var row := Rect2(370, 196 + row_index * 56, 540, 44)
 		var row_color := accent_color if selected else safe_color
 		draw_rect(Rect2(row.position + Vector2(4, 5), row.size), Color(0.0, 0.0, 0.0, 0.24), true)
@@ -3602,7 +3872,9 @@ func draw_drop_select(viewport: Vector2) -> void:
 		draw_line(row.position, row.position + Vector2(row.size.x, 0), row_color if selected else Color(muted_color, 0.3), 2.0 if selected else 1.0)
 		draw_hud_diamond(row.position + Vector2(26, 22), 8.0 if selected else 5.0, row_color)
 		draw_string(ui_font, row.position + Vector2(52, 29), _gear_label(id), HORIZONTAL_ALIGNMENT_LEFT, -1, 15, paper_color if selected else muted_color)
-	draw_string(ui_font, Vector2(0, 472), "W / S select     ENTER drop     ESC / G close", HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 14, muted_color)
+		if is_main:
+			draw_string(ui_font, row.position + Vector2(0, 29), "MAIN", HORIZONTAL_ALIGNMENT_RIGHT, row.size.x - 24, 13, safe_color)
+	draw_string(ui_font, Vector2(0, 472), "W / S select     ENTER drop     SPACE set MAIN     ESC / G close", HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 14, muted_color)
 
 func draw_wrapped_text(text: String, pos: Vector2, max_width: float, font_size: int, color: Color) -> float:
 	var words := text.split(" ")
@@ -3738,7 +4010,7 @@ func draw_hud(viewport: Vector2) -> void:
 			draw_hud_diamond(center, 10.0, danger_color.lightened(0.08))
 		else:
 			draw_hud_diamond(center, 10.0, Color(muted_color, 0.2))
-	var controls := "WASD MOVE  SHIFT RUN  SPACE JUMP  ENTER STRIKE  F SEARCH/PICK  B TABLE  G WEAR/DROP  L LEVELS  P PAUSE  R RESTART" if level_kind == "surface" else "WASD MOVE  ENTER STRIKE  DRAG PAN  WHEEL ZOOM  Q/E YAW  C RESET  L LEVELS  P PAUSE  R RESTART"
+	var controls := "WASD MOVE  SHIFT RUN  SPACE JUMP  ENTER STRIKE  F SEARCH/PICK  B TABLE  G WEAR/DROP  L LEVELS  P PAUSE  R RESTART" if level_kind == "surface" else "WASD MOVE  ENTER STRIKE  G PICK/DROP  DRAG PAN  WHEEL ZOOM  Q/E YAW  C RESET  L LEVELS  P PAUSE  R RESTART"
 	var controls_size := ui_font.get_string_size(controls, HORIZONTAL_ALIGNMENT_LEFT, -1, 13)
 	var controls_rect := Rect2(viewport.x - controls_size.x - 68, viewport.y - 54, controls_size.x + 38, 30)
 	draw_plaque(controls_rect, slate_light_color)
