@@ -11,20 +11,13 @@ const ATTACK_COOLDOWN := 0.34
 const MAX_HEALTH := 5
 const LIFE_JACKET_BOTTLES := 8
 const SOURCE_REACH := 1.35
-const SOURCE_ITEMS := {
-	"dustbin": ["plastic wrapper", "rope", "leaves"],
-	"recycling": ["plastic wrapper", "coiled spring"],
-	"crate": ["wood scrap", "rope"],
-	"cooler": ["coiled spring", "plastic wrapper"],
-	"bag": ["plastic wrapper", "rope", "leaves"],
-	"compost": ["leaves", "wood scrap"],
-}
 const ITEM_PHRASES := {
 	"leaves": "some leaves",
 	"plastic wrapper": "a plastic wrapper",
 	"rope": "a length of rope",
 	"wood scrap": "a scrap of wood",
 	"coiled spring": "a coiled spring",
+	"empty bottle": "an empty bottle",
 }
 const ITEM_PLURALS := {
 	"leaves": "leaves",
@@ -32,6 +25,7 @@ const ITEM_PLURALS := {
 	"rope": "lengths of rope",
 	"wood scrap": "wood scraps",
 	"coiled spring": "coiled springs",
+	"empty bottle": "empty bottles",
 }
 const DEFAULT_CAMERA_ZOOM := 1.08
 const CAMERA_FOLLOW_RATE := 2.4
@@ -54,30 +48,8 @@ const LEVELS := [
 		],
 		"shards": [],
 		"spawns": [],
-		"sources": [
-			{"kind": "dustbin", "name": "GARBAGE DUSTBIN", "cell": Vector2i(4, 6), "charges": 3, "bottles": 2},
-			{"kind": "recycling", "name": "RECYCLING BIN", "cell": Vector2i(1, 3), "charges": 1, "bottles": 3},
-			{"kind": "crate", "name": "BOTTLE CRATE", "cell": Vector2i(4, 1), "charges": 1, "bottles": 2},
-			{"kind": "cooler", "name": "PICNIC COOLER", "cell": Vector2i(2, 4), "charges": 1, "bottles": 3},
-			{"kind": "bag", "name": "TRASH BAG", "cell": Vector2i(5, 2), "charges": 1, "bottles": 2},
-			{"kind": "compost", "name": "COMPOST HEAP", "cell": Vector2i(1, 5), "charges": 1, "bottles": 3},
-		],
 		"start": Vector2i(1, 7),
 		"exit": Vector2i(14, 1),
-		"litter": [
-			{"kind": "leaves", "cell": Vector2i(2, 1)},
-			{"kind": "plastic wrapper", "cell": Vector2i(4, 3)},
-			{"kind": "rope", "cell": Vector2i(3, 7)},
-			{"kind": "wood scrap", "cell": Vector2i(2, 2)},
-			{"kind": "coiled spring", "cell": Vector2i(5, 4)},
-			{"kind": "leaves", "cell": Vector2i(1, 1)},
-			{"kind": "rope", "cell": Vector2i(4, 8)},
-			{"kind": "plastic wrapper", "cell": Vector2i(2, 8)},
-			{"kind": "coiled spring", "cell": Vector2i(10, 7)},
-			{"kind": "wood scrap", "cell": Vector2i(12, 3)},
-			{"kind": "leaves", "cell": Vector2i(13, 5)},
-			{"kind": "plastic wrapper", "cell": Vector2i(9, 1)},
-		],
 		"void": "102f3a",
 		"deep": "79bee3",
 		"ink": "294f59",
@@ -877,7 +849,7 @@ func load_level(index: int) -> void:
 	life_jacket_position = Vector2.ZERO
 	state = "playing"
 	if level_kind == "surface":
-		message = "Search bins with F • press B to craft"
+		message = "Pick up gear with F • press B to craft"
 	elif level_index == 1:
 		message = "Recover the three light shards"
 	else:
@@ -906,11 +878,6 @@ func load_level(index: int) -> void:
 	effects.clear()
 	craft_selected = 0
 	craft_slots.clear()
-	for source_data in level.get("sources", []):
-		var source: Dictionary = source_data
-		bottle_sources.append(source.duplicate(true))
-		bottle_inventory[String(source["kind"])] = 0
-		solid_cells[Vector2i(source["cell"])] = true
 	for shard_index in range(shard_cells.size()):
 		var cell: Vector2i = shard_cells[shard_index]
 		shards.append({
@@ -918,13 +885,8 @@ func load_level(index: int) -> void:
 			"taken": false,
 			"phase": shard_index * 1.7,
 		})
-	for item_index in range(level.get("litter", []).size()):
-		var item_data: Dictionary = level["litter"][item_index]
-		litter.append({
-			"kind": String(item_data["kind"]),
-			"position": Vector2(item_data["cell"]) + Vector2(0.5, 0.5),
-			"phase": item_index * 1.3,
-		})
+	if level_kind == "surface":
+		distribute_surface_items()
 	rebuild_flow()
 	for spawn_index in range(enemy_spawns.size()):
 		var cell: Vector2i = enemy_spawns[spawn_index]
@@ -939,6 +901,48 @@ func load_level(index: int) -> void:
 			"hit_flash": 0.0,
 			"attack_cooldown": 0.45 + enemy_index * 0.08,
 			"phase": enemy_index * 0.9,
+		})
+
+func distribute_surface_items() -> void:
+	# Loose gear scattered on the reachable bank. Guarantees the craft recipes
+	# work: >= LIFE_JACKET_BOTTLES empty bottles plus the fishing-catcher parts.
+	var bag: Array = []
+	for i in range(10):
+		bag.append("empty bottle")
+	for i in range(2):
+		bag.append("rope")
+	for i in range(1):
+		bag.append("wood scrap")
+	for i in range(1):
+		bag.append("plastic wrapper")
+	for i in range(1):
+		bag.append("coiled spring")
+	for i in range(6):
+		bag.append("leaves")
+	# Candidate cells: land reachable on foot from the start (no water, no walls).
+	var seen: Dictionary = {}
+	seen[start_cell] = true
+	var queue: Array = [start_cell]
+	var directions := [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]
+	var candidates: Array = []
+	while not queue.is_empty():
+		var current: Vector2i = queue.pop_front()
+		if walkable.has(current) and not water_cells.has(current) and current != start_cell:
+			candidates.append(current)
+		for direction in directions:
+			var neighbor: Vector2i = current + direction
+			if walkable.has(neighbor) and not water_cells.has(neighbor) and not seen.has(neighbor):
+				seen[neighbor] = true
+				queue.append(neighbor)
+	# Random layout: one item per cell, blended kinds.
+	candidates.shuffle()
+	bag.shuffle()
+	for index in range(mini(bag.size(), candidates.size())):
+		var cell: Vector2i = candidates[index]
+		litter.append({
+			"kind": String(bag[index]),
+			"position": Vector2(cell) + Vector2(0.5, 0.5),
+			"phase": index * 1.3,
 		})
 
 func apply_level_colors(level: Dictionary) -> void:
@@ -1178,6 +1182,7 @@ const ITEM_LABELS := {
 	"rope": "ROPE",
 	"wood scrap": "WOOD SCRAPS",
 	"coiled spring": "COILED SPRINGS",
+	"empty bottle": "EMPTY BOTTLES",
 }
 # Buildable recipes. "bottles" groups every empty bottle source; other keys
 # are item kinds (ITEM_ORDER). Add a new entry here to offer another build.
@@ -1235,7 +1240,10 @@ func pick_litter_kind(pick_kind: String) -> int:
 			continue
 		litter.remove_at(index)
 		picked += 1
-		item_inventory[pick_kind] = int(item_inventory.get(pick_kind, 0)) + 1
+		if pick_kind == "empty bottle":
+			bottle_count += 1
+		else:
+			item_inventory[pick_kind] = int(item_inventory.get(pick_kind, 0)) + 1
 		spawn_burst(item["position"], safe_color, 6)
 	if picked > 0:
 		item_count += picked
@@ -1250,7 +1258,8 @@ func pick_litter_kind(pick_kind: String) -> int:
 func try_pick_litter() -> void:
 	var entries := pickable_litter_entries()
 	if entries.is_empty():
-		search_bottle_source()
+		message = "Nothing to pick up here — keep exploring"
+		message_timer = 2.0
 		return
 	var total := 0
 	for entry in entries:
@@ -1279,54 +1288,6 @@ func close_pickup_select() -> void:
 	state = "playing"
 	message_timer = 0.0
 
-func search_bottle_source() -> void:
-	if state != "playing" or level_kind != "surface":
-		return
-	var nearest_index := -1
-	var nearest_distance := SOURCE_REACH
-	for index in range(bottle_sources.size()):
-		var source: Dictionary = bottle_sources[index]
-		if int(source["charges"]) <= 0:
-			continue
-		var source_position := Vector2(source["cell"]) + Vector2(0.5, 0.5)
-		var distance := player_position.distance_to(source_position)
-		if distance <= nearest_distance:
-			nearest_index = index
-			nearest_distance = distance
-	if nearest_index < 0:
-		for source_data in bottle_sources:
-			var nearby_source: Dictionary = source_data
-			var nearby_position := Vector2(nearby_source["cell"]) + Vector2(0.5, 0.5)
-			if player_position.distance_to(nearby_position) <= SOURCE_REACH:
-				message = "This source is empty — find another"
-				message_timer = 2.0
-				return
-		message = "Move closer to a bottle source"
-		message_timer = 2.0
-		return
-	var source: Dictionary = bottle_sources[nearest_index]
-	var source_kind := String(source["kind"])
-	var found_bottles := int(source["bottles"])
-	bottle_count += found_bottles
-	bottle_inventory[source_kind] = int(bottle_inventory.get(source_kind, 0)) + found_bottles
-	source["charges"] = int(source["charges"]) - 1
-	var source_position := Vector2(source["cell"]) + Vector2(0.5, 0.5)
-	var found_message := "You find " + str(found_bottles) + " empty bottles"
-	if String(source["kind"]) == "dustbin":
-		found_message = "You sift through leaves and find " + str(found_bottles) + " empty bottles"
-	elif String(source["kind"]) == "bag":
-		found_message = "You untie the trash bag and find " + str(found_bottles) + " empty bottles"
-	elif String(source["kind"]) == "compost":
-		found_message = "You dig through the compost and find " + str(found_bottles) + " empty bottles"
-	var item_pool: Array = SOURCE_ITEMS.get(source_kind, [])
-	if not item_pool.is_empty():
-		var found_item := String(item_pool[random.randi_range(0, item_pool.size() - 1)])
-		found_message += " and " + String(ITEM_PHRASES[found_item])
-	message = found_message + " — " + str(total_collected_items()) + " / " + str(LIFE_JACKET_BOTTLES)
-	message_timer = 2.8
-	spawn_burst(source_position, safe_color, 10)
-	add_shake(0.16)
-
 func open_craft_table() -> void:
 	if state != "playing" or level_kind != "surface":
 		return
@@ -1344,15 +1305,17 @@ func close_craft_table() -> void:
 	message_timer = 0.0
 
 func craft_element_count() -> int:
-	return bottle_sources.size() + ITEM_ORDER.size()
+	return 1 + ITEM_ORDER.size()
 
 func craft_element_kind(element_index: int) -> String:
-	if element_index < bottle_sources.size():
-		return String(bottle_sources[element_index]["kind"])
-	return String(ITEM_ORDER[element_index - bottle_sources.size()])
+	if element_index == 0:
+		return "bottles"
+	return String(ITEM_ORDER[element_index - 1])
 
 func craft_element_inventory(element_index: int) -> Dictionary:
-	return bottle_inventory if element_index < bottle_sources.size() else item_inventory
+	if element_index == 0:
+		return {"bottles": bottle_count}
+	return item_inventory
 
 func craft_element_available(element_index: int) -> int:
 	if element_index < 0 or element_index >= craft_element_count():
@@ -1402,8 +1365,6 @@ func recipe_built(index: int) -> bool:
 			return false
 
 func craft_build_kind(element_index: int) -> String:
-	if element_index < bottle_sources.size():
-		return "bottles"
 	return craft_element_kind(element_index)
 
 func recipe_kind_label(kind: String) -> String:
@@ -1481,9 +1442,10 @@ func combine_craft_elements() -> void:
 	for slot in craft_slots:
 		var inventory := craft_element_inventory(slot)
 		var kind := craft_element_kind(slot)
-		inventory[kind] = maxi(0, int(inventory.get(kind, 0)) - 1)
-		if slot < bottle_sources.size():
+		if kind == "bottles":
 			bottle_count = maxi(0, bottle_count - 1)
+		else:
+			inventory[kind] = maxi(0, int(inventory.get(kind, 0)) - 1)
 	match String(RECIPES[recipe_index]["id"]):
 		"life_jacket":
 			has_life_jacket = true
@@ -2116,6 +2078,8 @@ func draw_litter_item(item: Dictionary) -> void:
 		"leaves":
 			draw_leaf(position + Vector2(-3, -5 + bob), 0.5, floor_petrol_color)
 			draw_leaf(position + Vector2(5, -3 - bob), 0.42, accent_color)
+		"empty bottle":
+			draw_bottle(position + Vector2(0, -4 + bob), 0.42, safe_color)
 		"plastic wrapper":
 			draw_plastic_wrapper(position + Vector2(0, -4 + bob))
 		"rope":
@@ -2155,6 +2119,8 @@ func draw_item_icon(kind: String, center: Vector2) -> void:
 		"leaves":
 			draw_leaf(center + Vector2(-3, 0), 0.4, floor_petrol_color)
 			draw_leaf(center + Vector2(4, 1), 0.32, accent_color)
+		"empty bottle":
+			draw_bottle(center, 0.42, safe_color)
 		"plastic wrapper":
 			draw_plastic_wrapper(center)
 		"rope":
@@ -2657,23 +2623,8 @@ func draw_level_select(viewport: Vector2) -> void:
 	draw_string(ui_font, Vector2(0, 632), footer, HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 14, muted_color)
 
 func craft_element_label(element_index: int) -> String:
-	if element_index < bottle_sources.size():
-		var source: Dictionary = bottle_sources[element_index]
-		match String(source["kind"]):
-			"dustbin":
-				return "GARBAGE BOTTLES"
-			"recycling":
-				return "RECYCLED BOTTLES"
-			"crate":
-				return "RETURNED BOTTLES"
-			"cooler":
-				return "COOLER BOTTLES"
-			"bag":
-				return "TRASH BAG BOTTLES"
-			"compost":
-				return "COMPOST BOTTLES"
-			_:
-				return "EMPTY BOTTLES"
+	if element_index == 0:
+		return "EMPTY BOTTLES"
 	return String(ITEM_LABELS.get(craft_element_kind(element_index), "ITEMS"))
 
 func draw_pickup_select(viewport: Vector2) -> void:
@@ -2737,7 +2688,7 @@ func draw_craft_table(viewport: Vector2) -> void:
 			draw_rect(Rect2(row.position + Vector2(3, 4), row.size), Color(0.0, 0.0, 0.0, 0.24), true)
 			draw_rect(row, Color(ink_color, 0.96) if not selected else Color(void_color, 0.98), true)
 			draw_line(row.position, row.position + Vector2(row.size.x, 0), row_color if selected else Color(muted_color, 0.3), 2.0 if selected else 1.0)
-			if element_index < bottle_sources.size():
+			if element_index == 0:
 				draw_bottle(row.position + Vector2(24, 24), 0.48, row_color)
 			else:
 				draw_item_icon(craft_element_kind(element_index), row.position + Vector2(22, 24))

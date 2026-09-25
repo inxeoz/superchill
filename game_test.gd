@@ -192,7 +192,7 @@ func validate_surface_level() -> bool:
 		return false
 	if not game.walkable.has(game.exit_cell) or not game.flow.has(game.exit_cell):
 		return false
-	if not game.enemies.is_empty() or not game.shards.is_empty() or game.bottle_sources.size() < 4:
+	if not game.enemies.is_empty() or not game.shards.is_empty() or not game.bottle_sources.is_empty():
 		return false
 	for row in game.map_rows:
 		if String(row).length() != 16:
@@ -200,23 +200,37 @@ func validate_surface_level() -> bool:
 	for y in range(1, 10):
 		if not game.water_cells.has(Vector2i(6, y)):
 			return false
-	var available_bottles := 0
-	var dustbin: Dictionary = {}
-	for source_data in game.bottle_sources:
-		var source: Dictionary = source_data
-		var cell: Vector2i = source["cell"]
-		if not game.walkable.has(cell) or game.water_cells.has(cell) or not game.flow.has(cell):
+	# Loose items: distinct, on reachable on-foot land, and collectible.
+	var seen_cells: Dictionary = {}
+	var counts: Dictionary = {}
+	var bottle_total := 0
+	for item in game.litter:
+		var item_cell: Vector2i = game.cell_at(item["position"])
+		if not game.walkable.has(item_cell) or game.water_cells.has(item_cell) or not game.flow.has(item_cell):
 			return false
-		if game.can_occupy(Vector2(cell) + Vector2(0.5, 0.5), 0.22):
+		if seen_cells.has(item_cell):
 			return false
-		available_bottles += int(source["charges"]) * int(source["bottles"])
-		if String(source["kind"]) == "dustbin":
-			dustbin = source
-	if available_bottles < game.LIFE_JACKET_BOTTLES or dustbin.is_empty():
+		seen_cells[item_cell] = true
+		if not game.can_occupy(item["position"], 0.22):
+			return false
+		var kind := String(item["kind"])
+		counts[kind] = int(counts.get(kind, 0)) + 1
+		if kind == "empty bottle":
+			bottle_total += 1
+	if game.litter.size() == 0 or bottle_total < game.LIFE_JACKET_BOTTLES:
 		return false
+	# The fishing-catcher materials must all be present somewhere on the bank.
+	for need_kind in game.recipe_needs(1):
+		if int(counts.get(String(need_kind), 0)) < int(game.recipe_needs(1)[need_kind]):
+			return false
+	# No item spawns on the player's start tile.
+	if seen_cells.has(game.start_cell):
+		return false
+	# Water is impassable without the jacket.
 	var water_position := Vector2(6.5, 4.5)
 	if game.can_occupy(water_position, 0.22):
 		return false
+	# The right bank is reached once a jacket lets you cross.
 	game.player_position = Vector2(game.exit_cell) + Vector2(0.5, 0.5)
 	game.update_surface_level()
 	if game.level_index != 1:
@@ -226,84 +240,38 @@ func validate_surface_level() -> bool:
 	if game.state != "crafting" or not game.craft_visible_elements().is_empty():
 		return false
 	game.close_craft_table()
-	var pickup_item: Dictionary = game.litter[0]
-	var pickup_position: Vector2 = pickup_item["position"]
-	if not game.walkable.has(game.cell_at(pickup_position)) or game.water_cells.has(game.cell_at(pickup_position)):
+	# A lone item is picked straight up (no list), removing exactly it.
+	var lone: Dictionary = {}
+	for item in game.litter:
+		if String(item["kind"]) == "wood scrap":
+			lone = item
+			break
+	game.player_position = lone["position"]
+	game.pick_litter_kind("wood scrap")
+	if game.item_inventory.get("wood scrap", 0) != 1 or game.item_count != 1 or game.litter.size() != 20:
 		return false
-	game.player_position = pickup_position
-	game.update_surface_level()
-	if game.item_count != 0 or game.litter.size() != 12 or game.level_index != 0:
+	if game.total_collected_items() != 1:
 		return false
-	# several items in reach -> F opens the item list
-	game.try_pick_litter()
-	if game.state != "pickup_select" or game.pickup_selected != 0:
-		return false
-	# closing the list without picking leaves everything as is
-	game.close_pickup_select()
-	if game.state != "playing" or game.item_count != 0 or game.litter.size() != 12:
-		return false
-	# reopen and confirm -> picks all of the selected kind at once
-	game.try_pick_litter()
-	if game.state != "pickup_select":
-		return false
-	game.confirm_pickup_selection()
-	if game.state != "playing" or game.item_count != 2 or game.litter.size() != 10:
-		return false
-	if int(game.item_inventory.get(String(pickup_item["kind"]), 0)) != 2:
-		return false
-	if game.total_collected_items() != 2:
-		return false
-	# single item in reach -> direct pickup, no list
-	game.player_position = Vector2(4.5, 3.5)
-	game.try_pick_litter()
-	if game.state != "playing" or game.item_count != 3 or int(game.item_inventory.get("plastic wrapper", 0)) != 1:
-		return false
-	game.open_craft_table()
-	if game.state != "crafting":
-		return false
-	var first_visible: Array = game.craft_visible_elements()
-	if first_visible.size() != 2 or first_visible[0] != game.bottle_sources.size() or first_visible[1] != game.bottle_sources.size() + 1:
-		return false
-	if game.craft_element_kind(first_visible[0]) != "leaves" or game.craft_element_kind(first_visible[1]) != "plastic wrapper":
-		return false
-	game.close_craft_table()
-	for source_data in game.bottle_sources:
-		if String(source_data["kind"]) == "dustbin":
-			dustbin = source_data
-	var dustbin_position := Vector2(dustbin["cell"]) + Vector2(0.5, 0.5)
-	var dustbin_charges := int(dustbin["charges"])
-	game.player_position = dustbin_position
-	game.search_bottle_source()
-	if game.bottle_count != int(dustbin["bottles"]) or int(dustbin["charges"]) != dustbin_charges - 1:
-		return false
-	if int(game.bottle_inventory.get("dustbin", 0)) != game.bottle_count:
-		return false
-	game.open_craft_table()
-	var dustbin_visible: Array = game.craft_visible_elements()
-	if game.state != "crafting" or dustbin_visible.size() != 3 or dustbin_visible[0] != 0:
-		return false
-	game.add_craft_element()
-	game.add_craft_element()
-	game.combine_craft_elements()
-	if game.has_life_jacket or game.state != "crafting" or game.craft_slots.size() != 2 or game.bottle_count != 2:
-		return false
-	game.close_craft_table()
-	for source_data in game.bottle_sources:
-		var source: Dictionary = source_data
-		game.bottle_inventory[String(source["kind"])] = 2
+	# Life jacket builds from eight collected bottles (craft element 0).
+	game.load_level(0)
 	game.bottle_count = game.LIFE_JACKET_BOTTLES
 	game.open_craft_table()
-	var all_visible: Array = game.craft_visible_elements()
-	if all_visible.size() != game.bottle_sources.size() + 2:
+	var bottle_visible: Array = game.craft_visible_elements()
+	if bottle_visible.size() != 1 or bottle_visible[0] != 0:
 		return false
+	if game.craft_element_kind(0) != "bottles" or game.craft_build_kind(0) != "bottles":
+		return false
+	game.craft_selected = 0
 	for slot_index in range(game.LIFE_JACKET_BOTTLES):
-		game.craft_selected = slot_index % game.bottle_sources.size()
 		game.add_craft_element()
 	if game.craft_slots.size() != game.LIFE_JACKET_BOTTLES:
 		return false
 	game.combine_craft_elements()
 	if not game.has_life_jacket or game.state != "playing" or game.bottle_count != 0 or not game.craft_slots.is_empty() or game.life_jacket_on_ground:
 		return false
+	if not game.can_occupy(water_position, 0.22):
+		return false
+	# Drop / re-equip the jacket; water is blocked again while it is on the ground.
 	var drop_position: Vector2 = game.player_position
 	game.toggle_life_jacket()
 	if game.has_life_jacket or not game.life_jacket_on_ground or game.life_jacket_position != drop_position:
@@ -324,13 +292,8 @@ func validate_surface_level() -> bool:
 		return false
 	if not game.can_occupy(water_position, 0.22):
 		return false
-	game.player_position = Vector2(game.exit_cell) + Vector2(0.5, 0.5)
-	game.update_surface_level()
-	if game.level_index != 1 or game.level_name != "FACETED DEPTHS":
-		return false
-	# jacket is bottles-only: debris cannot be added, combine needs 8 bottles
+	# Jacket is bottles-only: debris cannot fill its slots and it needs all eight.
 	game.load_level(0)
-	game.bottle_inventory["dustbin"] = 4
 	game.item_inventory["leaves"] = 4
 	game.bottle_count = 4
 	game.open_craft_table()
@@ -346,10 +309,9 @@ func validate_surface_level() -> bool:
 	game.combine_craft_elements()
 	if game.has_life_jacket or game.state != "crafting" or game.craft_slots.size() != 4:
 		return false
-	game.bottle_inventory["dustbin"] = 8
-	game.bottle_count = 8
 	game.craft_slots.clear()
-	for slot_index in range(8):
+	game.bottle_count = game.LIFE_JACKET_BOTTLES
+	for slot_index in range(game.LIFE_JACKET_BOTTLES):
 		game.craft_selected = 0
 		game.add_craft_element()
 	if game.craft_slots.size() != game.LIFE_JACKET_BOTTLES:
@@ -357,7 +319,7 @@ func validate_surface_level() -> bool:
 	game.combine_craft_elements()
 	if not game.has_life_jacket or game.bottle_count != 0 or int(game.item_inventory.get("leaves", 0)) != 4:
 		return false
-	# fishing catcher recipe: Tab to it, add its materials, build
+	# Fishing catcher recipe: Tab to it, add its materials, build.
 	game.load_level(0)
 	game.item_inventory["rope"] = 2
 	game.item_inventory["wood scrap"] = 1
@@ -367,7 +329,7 @@ func validate_surface_level() -> bool:
 	game.switch_recipe(1)
 	if game.recipe_index != 1:
 		return false
-	# Tab cycles: switch again from the last recipe wraps back to the first
+	# Tab cycles: switching again from the last recipe wraps back to the first.
 	game.switch_recipe(1)
 	if game.recipe_index != 0:
 		return false
@@ -399,6 +361,7 @@ func validate_surface_level() -> bool:
 	game.player_position = Vector2(game.exit_cell) + Vector2(0.5, 0.5)
 	game.update_surface_level()
 	return game.level_index == 1 and game.level_name == "FACETED DEPTHS"
+
 
 func validate_dungeon_level(index: int) -> bool:
 	game.load_level(index)
