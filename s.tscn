@@ -2,5 +2,5 @@
 
 [ext_resource type="Script" path="res://cube.gd" id="1_cube"]
 
-[node name="Cube" type="Node2D" unique_id=732116644]
+[node name="FacetedDepths" type="Node2D" unique_id=732116644]
 script = ExtResource("1_cube")
