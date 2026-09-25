@@ -840,6 +840,27 @@ var player_jump_time := 0.0
 const JUMP_DURATION := 0.5
 const JUMP_HEIGHT := 18.0
 const DROWN_INTERVAL := 0.2
+const SFX_FILES := {
+	"attack": "rpg/rpg_012.wav",
+	"enemy_hit": "hit/hit_001.wav",
+	"enemy_death": "rpg/rpg_collapse.wav",
+	"player_hurt": "rpg/rpg_damage.wav",
+	"lose": "alarm/alarm_000.wav",
+	"pickup": "rpg/rpg_pickup.wav",
+	"shard": "rpg/rpg_xp.wav",
+	"spirit": "powerup/powerup_000.wav",
+	"gate_open": "rpg/rpg_levelup.wav",
+	"win": "jingle/jingle_003.wav",
+	"drown": "water/water_002.wav",
+	"craft_build": "mech/mech_003.wav",
+	"craft_fail": "ui/ui_008.wav",
+	"equip": "mech/mech_001.wav",
+	"jump": "jump/jump_000.wav",
+	"menu_move": "rpg/rpg_menu-move.wav",
+	"menu_confirm": "rpg/rpg_menu-confirm.wav",
+	"menu_open": "rpg/rpg_menu-open.wav",
+	"level_load": "rpg/rpg_door.wav",
+}
 var drown_timer := 0.0
 var invulnerability := 0.0
 var shake_strength := 0.0
@@ -870,13 +891,41 @@ var camera_target := Vector2.ZERO
 var camera_dragging := false
 var camera_drag_origin := Vector2.ZERO
 var camera_drag_start := Vector2.ZERO
+var _sfx_players: Array = []
+var _sfx_streams: Dictionary = {}
 
 func _ready() -> void:
 	random.seed = 260925
 	ui_font = SystemFont.new()
 	ui_font.font_names = PackedStringArray(["DejaVu Sans", "sans-serif"])
+	_setup_sfx()
 	reset_game()
 	open_level_select()
+
+func _setup_sfx() -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	for index in range(8):
+		var audio_player := AudioStreamPlayer.new()
+		add_child(audio_player)
+		_sfx_players.append(audio_player)
+
+func _sfx(event_name: String) -> void:
+	if not SFX_FILES.has(event_name) or _sfx_players.is_empty():
+		return
+	var stream: AudioStream = _sfx_streams.get(event_name)
+	if stream == null:
+		stream = load("res://assets/sfx/" + SFX_FILES[event_name])
+		_sfx_streams[event_name] = stream
+	if stream == null:
+		return
+	for audio_player in _sfx_players:
+		if not audio_player.playing:
+			audio_player.stream = stream
+			audio_player.play()
+			return
+	_sfx_players[0].stream = stream
+	_sfx_players[0].play()
 
 func reset_game() -> void:
 	level_index = 0
@@ -887,11 +936,14 @@ func open_level_select() -> void:
 	selected_level = level_index
 	state = "level_select"
 	message_timer = 0.0
+	_sfx("menu_open")
 
 func move_level_selection(step: int) -> void:
 	selected_level = posmod(selected_level + step, LEVELS.size())
+	_sfx("menu_move")
 
 func confirm_level_selection() -> void:
+	_sfx("menu_confirm")
 	load_level(selected_level)
 
 func close_level_select() -> void:
@@ -1142,6 +1194,7 @@ func update_player(delta: float) -> void:
 	if level_kind == "surface" and state == "playing" and not player_jumping and Input.is_physical_key_pressed(KEY_SPACE):
 		player_jumping = true
 		player_jump_time = 0.0
+		_sfx("jump")
 
 func move_with_collisions(current: Vector2, movement: Vector2, radius: float) -> Vector2:
 	var candidate := current + movement
@@ -1228,6 +1281,7 @@ func attack() -> void:
 		"phase": 0.0,
 		"color": accent_color,
 	})
+	_sfx("attack")
 	var connected := false
 	for index in range(enemies.size() - 1, -1, -1):
 		var enemy := enemies[index]
@@ -1237,11 +1291,13 @@ func attack() -> void:
 		var in_facing := distance < 0.001 or player_facing.dot(offset / distance) > 0.05
 		if distance <= 1.2 and in_facing:
 			connected = true
+			_sfx("enemy_hit")
 			enemy["health"] = int(enemy["health"]) - 1
 			enemy["hit_flash"] = 0.18
 			spawn_burst(enemy_position, safe_color)
 			if int(enemy["health"]) <= 0:
 				spawn_burst(enemy_position, danger_color, 10)
+				_sfx("enemy_death")
 				enemies.remove_at(index)
 	if connected:
 		add_shake(0.28)
@@ -1253,10 +1309,12 @@ func hurt_player() -> void:
 	invulnerability = 0.85
 	add_shake(0.5)
 	spawn_burst(player_position, danger_color)
+	_sfx("player_hurt")
 	if health <= 0:
 		state = "lost"
 		message = "The depths reclaimed the light"
 		message_timer = 99.0
+		_sfx("lose")
 
 func update_drowning(delta: float) -> void:
 	if state != "playing" or level_kind != "surface":
@@ -1276,10 +1334,12 @@ func drown_damage() -> void:
 	health = maxi(0, health - 1)
 	spawn_burst(player_position, safe_color, 8)
 	add_shake(0.22)
+	_sfx("drown")
 	if health <= 0:
 		state = "lost"
 		message = "You drowned in the river"
 		message_timer = 99.0
+		_sfx("lose")
 
 func collect_shards() -> void:
 	for shard in shards:
@@ -1289,7 +1349,9 @@ func collect_shards() -> void:
 			health = mini(MAX_HEALTH, health + 1)
 			spawn_burst(shard["position"], safe_color, 12)
 			add_shake(0.22)
+			_sfx("shard")
 			if shards_collected >= shard_cells.size():
+				_sfx("gate_open")
 				message = "The gate is open — find the exit"
 				message_timer = 4.0
 			else:
@@ -1298,11 +1360,13 @@ func collect_shards() -> void:
 	var exit_position := Vector2(exit_cell) + Vector2(0.5, 0.5)
 	if shards_collected >= shard_cells.size() and player_position.distance_to(exit_position) < 0.56:
 		if level_index < LEVELS.size() - 1:
+			_sfx("level_load")
 			load_level(level_index + 1)
 		else:
 			state = "won"
 			message = "All depths are clear"
 			message_timer = 99.0
+			_sfx("win")
 
 const ITEM_ORDER := ["leaves", "plastic wrapper", "rope", "wood scrap", "coiled spring"]
 const ITEM_LABELS := {
@@ -1384,6 +1448,7 @@ func pick_litter_kind(pick_kind: String) -> int:
 		spawn_burst(item["position"], safe_color, 6)
 	if picked > 0:
 		item_count += picked
+		_sfx("pickup")
 		if picked == 1:
 			message = "You pick up " + String(ITEM_PHRASES[pick_kind])
 		else:
@@ -1409,6 +1474,7 @@ func try_collect_spirit() -> bool:
 		message_timer = 2.8
 		spawn_burst(spirit["position"], accent_color, 14)
 		add_shake(0.2)
+		_sfx("spirit")
 		return true
 	return false
 
@@ -1425,6 +1491,7 @@ func try_pick_litter() -> void:
 		pickup_selected = 0
 		state = "pickup_select"
 		message_timer = 0.0
+		_sfx("menu_open")
 	else:
 		pick_litter_kind(String(entries[0]["kind"]))
 
@@ -1437,6 +1504,7 @@ func confirm_pickup_selection() -> void:
 		return
 	var entry: Dictionary = entries[clampi(pickup_selected, 0, entries.size() - 1)]
 	state = "playing"
+	_sfx("menu_confirm")
 	pick_litter_kind(String(entry["kind"]))
 
 func close_pickup_select() -> void:
@@ -1454,6 +1522,7 @@ func open_craft_table() -> void:
 	state = "crafting"
 	message_timer = 0.0
 	refresh_recipe_index()
+	_sfx("menu_open")
 
 func close_craft_table() -> void:
 	if state != "crafting":
@@ -1600,15 +1669,18 @@ func build_selected() -> void:
 	if recipe_index < 0:
 		message = "You don't know how to use this yet — explore more"
 		message_timer = 2.4
+		_sfx("craft_fail")
 		return
 	if recipe_built(recipe_index):
 		message = "Already built"
 		message_timer = 2.4
+		_sfx("craft_fail")
 		return
 	var missing := missing_recipe_counts(recipe_index)
 	if not missing.is_empty():
 		message = "We need " + missing_counts_label(missing)
 		message_timer = 2.8
+		_sfx("craft_fail")
 		return
 	var needs := recipe_needs(recipe_index)
 	for kind in needs:
@@ -1627,6 +1699,7 @@ func build_selected() -> void:
 	message_timer = 3.0
 	spawn_burst(player_position, safe_color, 18)
 	add_shake(0.32)
+	_sfx("craft_build")
 
 func drop_life_jacket() -> void:
 	if state != "playing" or level_kind != "surface" or not has_life_jacket:
@@ -1638,6 +1711,7 @@ func drop_life_jacket() -> void:
 	message_timer = 2.8
 	spawn_burst(life_jacket_position, accent_color, 10)
 	add_shake(0.16)
+	_sfx("equip")
 
 func pick_up_life_jacket() -> bool:
 	if not life_jacket_on_ground:
@@ -1654,6 +1728,7 @@ func pick_up_life_jacket() -> bool:
 	message_timer = 2.0
 	spawn_burst(player_position, safe_color, 12)
 	add_shake(0.18)
+	_sfx("equip")
 	return true
 
 func toggle_life_jacket() -> void:
@@ -1718,8 +1793,10 @@ func handle_camera_button(event: InputEventMouseButton) -> void:
 		camera_drag_start = camera_offset
 	elif event.pressed and event.button_index == MOUSE_BUTTON_WHEEL_UP:
 		camera_zoom = clampf(camera_zoom + CAMERA_ZOOM_STEP, CAMERA_ZOOM_MIN, CAMERA_ZOOM_MAX)
+		_sfx("menu_move")
 	elif event.pressed and event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 		camera_zoom = clampf(camera_zoom - CAMERA_ZOOM_STEP, CAMERA_ZOOM_MIN, CAMERA_ZOOM_MAX)
+		_sfx("menu_move")
 
 func handle_camera_motion(event: InputEventMouseMotion) -> void:
 	if state == "playing" and camera_dragging:
@@ -1751,9 +1828,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			if keycode == KEY_UP or keycode == KEY_W:
 				if pickup_entry_count > 0:
 					pickup_selected = posmod(pickup_selected - 1, pickup_entry_count)
+					_sfx("menu_move")
 			elif keycode == KEY_DOWN or keycode == KEY_S:
 				if pickup_entry_count > 0:
 					pickup_selected = posmod(pickup_selected + 1, pickup_entry_count)
+					_sfx("menu_move")
 			elif keycode == KEY_ENTER or keycode == KEY_KP_ENTER or keycode == KEY_SPACE:
 				confirm_pickup_selection()
 			elif keycode == KEY_ESCAPE or keycode == KEY_B or keycode == KEY_F:
@@ -1764,10 +1843,12 @@ func _unhandled_input(event: InputEvent) -> void:
 				if craft_visible_count > 0:
 					craft_selected = posmod(craft_selected - 1, craft_visible_count)
 					refresh_recipe_index()
+					_sfx("menu_move")
 			elif keycode == KEY_DOWN or keycode == KEY_S:
 				if craft_visible_count > 0:
 					craft_selected = posmod(craft_selected + 1, craft_visible_count)
 					refresh_recipe_index()
+					_sfx("menu_move")
 			elif keycode == KEY_SPACE or keycode == KEY_ENTER or keycode == KEY_KP_ENTER:
 				build_selected()
 			elif keycode == KEY_E and life_jacket_on_ground:
