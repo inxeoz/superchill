@@ -12,11 +12,11 @@ Players who want a short, immediately playable isometric dungeon crawl using key
 
 ## Product Purpose
 
-Deliver a compact four-level Godot dungeon-crawl run where a player explores distinct isometric depths, fights themed monsters, collects light shards, and reaches each gate. Success means a satisfying run can be completed in a few minutes.
+Deliver a compact five-level Godot run: an open-sky River Run where the player gathers empty bottles, weaves a flotation jacket, and crosses a river, followed by four isometric dungeon depths to explore, fight, and escape. Success means a satisfying run can be completed in a few minutes.
 
 ## Positioning
 
-A fast, readable dungeon run built around immediate keyboard movement, close-range combat, and a clear exit objective.
+A fast, readable adventure built around immediate keyboard movement, a tactile survival opening, close-range combat, and a clear exit objective.
 
 ## Operating Context
 
@@ -24,7 +24,7 @@ Godot 4.7, desktop-first with a web-export-friendly implementation, rendered at 
 
 ## Capabilities and Constraints
 
-The run includes four deterministic levels, a launch-time level selector, each with its own connected map, palette, enemy behavior, three shards, and exit. Desktop and web targets must share the same gameplay code. Only supplied assets with known redistribution terms may ship; other packs remain blocked pending license confirmation.
+The run includes a deterministic combat-free Level 0 plus four connected dungeon depths, a launch-time level selector, bottle gathering, bottle-jacket crafting, jacket-gated river crossing, themed enemy behavior, three-shard objectives, and level exits. Desktop and web targets must share the same gameplay code. Only supplied assets with known redistribution terms may ship; other packs remain blocked pending license confirmation.
 
 ## Evidence on Hand
 

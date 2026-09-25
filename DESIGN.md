@@ -106,7 +106,7 @@ Faceted Depths presents the dungeon as a living cut gemstone. Deep ink caverns f
 
 The room stays quiet and readable while semantic light supplies the drama: amber marks action, cyan marks safety and progress, and oxblood marks danger. The derived NE/SE/SW/NW player frames remain the one deliberate sprite exception; their path, source pack, and license are provenance, not palette, shape, or typography tokens.
 
-The run moves through four authored depths: Faceted Depths, Mossglass Cistern, Ember Vault, and Starfall Reliquary. Each depth changes the mineral palette, map topology, enemy silhouette, movement speed, and health profile while preserving the same shard-and-gate objective.
+The run opens on Level 0, River Run: a bright outdoor riverbank where bottle sources, leaves, flowing water, and a flotation jacket replace the dungeon objective. It then moves through four authored depths: Faceted Depths, Mossglass Cistern, Ember Vault, and Starfall Reliquary. Each depth changes the mineral palette, map topology, enemy silhouette, movement speed, and health profile while preserving the same shard-and-gate objective.
 
 **Key Characteristics:**
 - A 2:1 isometric world with 96 × 48 px floor diamonds and split light/shadow facets.
@@ -116,7 +116,7 @@ The run moves through four authored depths: Faceted Depths, Mossglass Cistern, E
 
 ## Colors
 
-The palette is predominantly blue-black mineral neutrals with three functional jewel signals and restrained teal, amethyst, and plum mineral variation. Later depths rotate the same signal roles into green, ember, and astral palettes rather than introducing new semantic colors.
+The dungeon palette is predominantly blue-black mineral neutrals with three functional jewel signals and restrained teal, amethyst, and plum mineral variation. Level 0 opens those same roles into daylight blue, grass green, river cyan, and warm sun amber; later depths rotate the signal roles into green, ember, and astral palettes.
 
 ### Primary
 - **Action Amber:** Player weapon accents, strike arcs, the objective plaque rule, and active attack feedback.
@@ -157,15 +157,15 @@ Godot's nearest texture filter preserves hard pixel edges across raster sprites 
 
 The design baseline is a 1280 × 720 landscape canvas using Godot's `canvas_items` stretch with `keep` aspect. The fixed edge grammar remains anchored to the live viewport.
 
-The 12 × 9 rooms project from `(640, 248)`. Each depth keeps the warrior near the lower-left field and the gate on the right, while its authored wall layout changes the route. Tiles are 96 px wide by 48 px high; walls rise 58 px and the visible front boundary is reduced to 16 px. The top-left plaque identifies `DEPTH 01 / 04` through `DEPTH 04 / 04`.
+The 12 × 9 rooms project from `(640, 248)`. Level 00 keeps the warrior on the near riverbank under open sky, with a diagonal water channel dividing the bottle-gathering side from the dungeon exit. Each dungeon keeps the warrior near the lower-left field and the gate on the right, while its authored wall layout changes the route. Tiles are 96 px wide by 48 px high; dungeon walls rise 58 px, outdoor hedge walls cap at 32 px, and Level 00 uses one continuous 16 px perimeter border at every camera angle. The top-left plaque identifies `LEVEL 00 / 05`, then `DEPTH 01 / 04` through `DEPTH 04 / 04`.
 
 HUD plaques stay at the perimeter: 30 px from the left, right, and bottom edges, and 24 px from the top. Transient messages center at `y = 108`; the keyboard plaque sizes to its content plus 38 px. Camera pan, zoom, and yaw affect the world projection around the player; the HUD remains fixed. Yaw changes the ground-plane viewpoint, not a flat rotation of the finished map.
 
 ## Elevation & Depth
 
-This world uses tonal layering and painter ordering, not blurred interface shadows. Rendering proceeds as void, cavern atmosphere and dust, floor facets, low front boundary, depth-sorted walls and entities, transient effects, then HUD.
+This world uses tonal layering and painter ordering, not blurred interface shadows. Rendering proceeds as void, cavern atmosphere and dust or open-sky atmosphere, floor facets and water, low front boundary, depth-sorted walls, sources, and entities, transient effects, then HUD.
 
-Walls, shards, gate, player, and enemies share one list sorted by ascending projected screen Y. Lower objects therefore draw later and occlude upper objects; depth must not be assigned by entity type. Projected positions round to 2 px increments before drawing, then pass through the movable 2.5D camera transform.
+Walls, bottle sources, shards, gate or cave exit, player, and enemies share one list sorted by ascending projected screen Y. Lower objects therefore draw later and occlude upper objects; depth must not be assigned by entity type. Projected positions round to 2 px increments before drawing, then pass through the movable 2.5D camera transform.
 
 Contact shadows are flattened diamonds beneath shards, the player, and enemies. Plaques use a hard black rectangle offset by 5 × 7 px. There are no soft or diffuse shadow treatments.
 
@@ -187,19 +187,26 @@ All visible components are custom-drawn Godot geometry in `faceted_depths.gd`; t
 - **Shared grammar:** `rgba(6.375, 10.2, 19.125, 0.94)` fill, square corners, 5 × 7 px black shadow at 25% alpha, 2 px semantic top rule, and 1 px bottom rule at 28% accent alpha.
 - **Objective:** 330 × 76 px at `(30, 24)`; 30 px paper title above a 15 px amber objective.
 - **Shards:** 214 × 76 px at the top-right; 14 px muted label and three 13 px-radius diamonds spaced 58 px apart. Collected markers are cyan; missing markers are muted at 25% alpha.
+- **Bottles:** The same top-right footprint on Level 0; a faceted bottle icon and count occupy the left half, while jacket readiness or remaining bottles occupies the right.
 - **Vitality:** 280 × 54 px at bottom-left; 14 px muted label and five 10 px-radius diamonds spaced 29 px apart. Active markers are oxblood; lost markers are muted at 20% alpha.
 - **Controls:** Content-fit, 30 px high, 19 px inset, slate-light top rule, and 13 px muted uppercase copy.
 
 ### Level Select
-- **Level select:** Full-viewport dark veil with one square selection panel, four authored depth rows, a bright selected row, and keyboard-only guidance. `L` opens it during play; `W/S` or arrows move; `Enter/Space` confirms; `L/Esc` closes.
+- **Level select:** Full-viewport dark veil with one square selection panel, five numbered rows from `00` through `04`, a bright selected row, and keyboard-only guidance. `L` opens it during play; `W/S` or arrows move; `Enter/Space` confirms; `L/Esc` closes.
+
+### Crafting Table
+- **Crafting table:** `B` opens a square overlay on Level 0. `W/S` selects one of four bottle-source elements, `Space` adds an available bottle to one of eight jacket slots, `X` removes the last slot, `Enter` combines a complete set, and `B/Esc` closes.
 
 ### Messages and States
 - **Message plaque:** Top-centered at `y = 108`, content width plus 44 px, 42 px high, cyan top rule, 18 px paper text, and alpha fade on exit.
 - **State overlay:** Full-viewport dark veil, no buttons; a cyan or oxblood crystal, 42 px title, and 17 px restart/result subtitle communicate win or loss. Restart remains the physical `R` key.
 
 ### World Units
-- **Floor:** One base diamond plus a 7% lightened right triangle, 12% darkened left triangle, and ink seam.
-- **Wall:** 58 px ink faces, alternating top mineral, one lightened top facet, and hard near-black seams; front boundary uses a 16 px wall height.
+- **Floor:** One base diamond plus a 7% lightened right triangle, 12% darkened left triangle, and ink seam. Level 0 uses the same facets as sunlit grass and paths.
+- **River:** Split cyan-blue diamonds with stepped paper glints that drift along the channel; collision remains impassable until the life jacket is crafted.
+- **Wall:** 58 px ink faces, alternating top mineral, one lightened top facet, and hard near-black seams; Level 0 hedge walls cap at 32 px and its full perimeter uses a continuous 16 px wall height.
+- **Bottle sources:** Faceted dustbins, recycling bins, crates, and coolers use hard polygon bodies; the dustbin visibly loses bottles and leaves with each search.
+- **Life jacket:** Two cyan flotation blocks with ink straps and light facets sit over the player sprite after crafting.
 - **Shard:** A bobbing cyan crystal, flattened contact shadow, and three orbiting paper motes.
 - **Enemies:** Four procedural silhouettes share the same depth ordering and contact-shadow grammar: shardling crystals, mireling bubbles, forge golems, and astral sentinels. Hit flash turns each body paper-white.
 - **Gate:** A symmetrical faceted seal, paper core, and translucent halo. It is sealed mauve with three oxblood bars, then becomes cyan after all three shards.
@@ -211,9 +218,9 @@ All visible components are custom-drawn Godot geometry in `faceted_depths.gd`; t
 
 ### Do:
 - **Do** preserve the strict amber-action, cyan-safety, and oxblood-danger mapping in every state.
-- **Do** keep each depth's palette and enemy silhouette paired with its authored map while preserving the shared semantic color roles.
+- **Do** keep Level 0's daylight palette and every depth's palette and enemy silhouette paired with its authored map while preserving the shared semantic color roles.
 - **Do** quantize projected world positions to 2 px screen-space increments.
-- **Do** sort walls, shards, gate, player, and enemies by projected screen Y before drawing effects and HUD.
+- **Do** sort walls, sources, shards, exits, player, and enemies by projected screen Y before drawing effects and HUD.
 - **Do** keep camera movement limited to the world layer and preserve a fixed, readable HUD.
 - **Do** keep HUD plaques at 24–30 px viewport margins and transient messages top-centered.
 - **Do** build room surfaces from split diamonds, straight seams, and hard offsets; reserve rounding for the app icon.
@@ -221,6 +228,6 @@ All visible components are custom-drawn Godot geometry in `faceted_depths.gd`; t
 ### Don't:
 - **Don't** introduce smooth subpixel camera drift, blurred shadows, gradients, glass blur, or soft rounded cards.
 - **Don't** use amber for progress or safety, or use cyan and oxblood interchangeably.
-- **Don't** show the gate as open or cyan before all three shards are collected.
+- **Don't** show a dungeon gate in Level 0 or show a depth gate as open or cyan before all three shards are collected.
 - **Don't** add buttons, hover states, menus, or browser-only chrome to this keyboard-controlled game.
 - **Don't** promote the player asset path, license, or raster palette into UI design tokens.

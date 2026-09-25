@@ -19,7 +19,7 @@ func run_test() -> void:
 	if game.selected_level != 1:
 		quit(1)
 		return
-	game.move_level_selection(3)
+	game.move_level_selection(4)
 	if game.selected_level != 0:
 		quit(1)
 		return
@@ -45,12 +45,26 @@ func run_test() -> void:
 		quit(1)
 		return
 	game.reset_camera()
+	if not is_equal_approx(game.camera_zoom, game.DEFAULT_CAMERA_ZOOM):
+		quit(1)
+		return
+	var camera_target_before: Vector2 = game.camera_target
+	game.player_position += Vector2(1.0, 0.0)
+	game.update_camera(0.25)
+	if game.camera_target.is_equal_approx(camera_target_before) or game.camera_target.is_equal_approx(game.player_position):
+		quit(1)
+		return
+	game.reset_camera()
 	var input_rotation_valid := await validate_input_rotation()
 	if not input_rotation_valid:
 		quit(1)
 		return
 	game.reset_camera()
 	if not validate_wall_faces():
+		quit(1)
+		return
+	game.reset_camera()
+	if not validate_rotated_border():
 		quit(1)
 		return
 	game.reset_camera()
@@ -65,11 +79,12 @@ func run_test() -> void:
 		if game.sword_frames[direction] == null:
 			quit(1)
 			return
-	for level_index in range(4):
-		if not validate_level(level_index):
+	for level_index in range(5):
+		var valid := validate_surface_level() if level_index == 0 else validate_dungeon_level(level_index)
+		if not valid:
 			quit(1)
 			return
-	game.load_level(0)
+	game.load_level(1)
 	var enemy_count: int = game.enemies.size()
 	game.enemies[0]["position"] = game.player_position + game.player_facing * 0.8
 	game.enemies[0]["health"] = 1
@@ -78,16 +93,16 @@ func run_test() -> void:
 	if game.enemies.size() != enemy_count - 1:
 		quit(1)
 		return
-	game.load_level(0)
+	game.load_level(1)
 	for shard in game.shards:
 		shard["taken"] = true
 	game.shards_collected = game.shard_cells.size()
 	game.player_position = Vector2(game.exit_cell) + Vector2(0.5, 0.5)
 	game.collect_shards()
-	if game.level_index != 1 or game.level_name != "MOSSGLASS CISTERN":
+	if game.level_index != 2 or game.level_name != "MOSSGLASS CISTERN":
 		quit(1)
 		return
-	game.load_level(3)
+	game.load_level(4)
 	for shard in game.shards:
 		shard["taken"] = true
 	game.shards_collected = game.shard_cells.size()
@@ -145,9 +160,38 @@ func validate_wall_faces() -> bool:
 	var center := (face[0] + face[1] + face[2] + face[3]) * 0.25
 	return Geometry2D.is_point_in_polygon(center, face)
 
-func validate_level(index: int) -> bool:
-	game.load_level(index)
-	if game.level_index != index or game.map_rows.size() != 9:
+func validate_rotated_border() -> bool:
+	game.load_level(0)
+	var border: Dictionary = game.border_cells()
+	if border.size() != 38:
+		return false
+	var expected_walls := 0
+	for y in range(game.map_rows.size()):
+		var row := String(game.map_rows[y])
+		for x in range(row.length()):
+			if not game.walkable.has(Vector2i(x, y)):
+				expected_walls += 1
+	for angle in [0.0, deg_to_rad(15.0), PI * 0.5, PI, PI * 1.5]:
+		game.camera_angle = angle
+		var walls: Array[Dictionary] = game.wall_drawables()
+		if walls.size() != expected_walls:
+			return false
+		var previous_depth := -INF
+		var seen: Dictionary = {}
+		for wall in walls:
+			var depth := float(wall["depth"])
+			var cell: Vector2i = wall["cell"]
+			if depth < previous_depth or seen.has(cell):
+				return false
+			previous_depth = depth
+			seen[cell] = true
+			if border.has(cell) and float(wall["height"]) != 16.0:
+				return false
+	return true
+
+func validate_surface_level() -> bool:
+	game.load_level(0)
+	if game.level_index != 0 or game.level_kind != "surface" or game.map_rows.size() != 9:
 		return false
 	if game.walkable.is_empty() or game.flow.size() != game.walkable.size():
 		return false
@@ -155,9 +199,85 @@ func validate_level(index: int) -> bool:
 		return false
 	if not game.walkable.has(game.exit_cell) or not game.flow.has(game.exit_cell):
 		return false
+	if not game.enemies.is_empty() or not game.shards.is_empty() or game.bottle_sources.size() < 4:
+		return false
+	for row in game.map_rows:
+		if String(row).length() != 12:
+			return false
+	for y in range(1, 8):
+		if not game.water_cells.has(Vector2i(6, y)):
+			return false
+	var available_bottles := 0
+	var dustbin: Dictionary = {}
+	for source_data in game.bottle_sources:
+		var source: Dictionary = source_data
+		var cell: Vector2i = source["cell"]
+		if not game.walkable.has(cell) or game.water_cells.has(cell) or not game.flow.has(cell):
+			return false
+		if game.can_occupy(Vector2(cell) + Vector2(0.5, 0.5), 0.22):
+			return false
+		available_bottles += int(source["charges"]) * int(source["bottles"])
+		if String(source["kind"]) == "dustbin":
+			dustbin = source
+	if available_bottles < game.LIFE_JACKET_BOTTLES or dustbin.is_empty():
+		return false
+	var water_position := Vector2(6.5, 4.5)
+	if game.can_occupy(water_position, 0.22):
+		return false
+	game.player_position = Vector2(game.exit_cell) + Vector2(0.5, 0.5)
+	game.update_surface_level()
+	if game.level_index != 0:
+		return false
+	var dustbin_position := Vector2(dustbin["cell"]) + Vector2(0.5, 0.5)
+	var dustbin_charges := int(dustbin["charges"])
+	game.player_position = dustbin_position
+	game.search_bottle_source()
+	if game.bottle_count != int(dustbin["bottles"]) or int(dustbin["charges"]) != dustbin_charges - 1:
+		return false
+	if int(game.bottle_inventory.get("dustbin", 0)) != game.bottle_count:
+		return false
+	game.open_craft_table()
+	if game.state != "crafting":
+		return false
+	game.add_craft_element()
+	game.add_craft_element()
+	game.combine_craft_elements()
+	if game.has_life_jacket or game.state != "crafting" or game.craft_slots.size() != 2 or game.bottle_count != 2:
+		return false
+	game.close_craft_table()
+	for source_data in game.bottle_sources:
+		var source: Dictionary = source_data
+		game.bottle_inventory[String(source["kind"])] = 2
+	game.bottle_count = game.LIFE_JACKET_BOTTLES
+	game.open_craft_table()
+	for source_index in range(game.bottle_sources.size()):
+		game.craft_selected = source_index
+		game.add_craft_element()
+		game.add_craft_element()
+	if game.craft_slots.size() != game.LIFE_JACKET_BOTTLES:
+		return false
+	game.combine_craft_elements()
+	if not game.has_life_jacket or game.state != "playing" or game.bottle_count != 0 or not game.craft_slots.is_empty():
+		return false
+	if not game.can_occupy(water_position, 0.22):
+		return false
+	game.player_position = Vector2(game.exit_cell) + Vector2(0.5, 0.5)
+	game.update_surface_level()
+	return game.level_index == 1 and game.level_name == "FACETED DEPTHS"
+
+func validate_dungeon_level(index: int) -> bool:
+	game.load_level(index)
+	if game.level_index != index or game.level_kind != "dungeon" or game.map_rows.size() != 9:
+		return false
+	if game.walkable.is_empty() or game.flow.size() != game.walkable.size() or not game.water_cells.is_empty() or not game.solid_cells.is_empty():
+		return false
+	if not game.walkable.has(game.start_cell) or not game.flow.has(game.start_cell):
+		return false
+	if not game.walkable.has(game.exit_cell) or not game.flow.has(game.exit_cell):
+		return false
 	if game.enemies.size() != 5 or game.shards.size() != 3:
 		return false
-	if String(game.enemy_kind) != String(expected_kinds[index]):
+	if String(game.enemy_kind) != String(expected_kinds[index - 1]):
 		return false
 	for row in game.map_rows:
 		if String(row).length() != 12:
