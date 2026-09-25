@@ -60,6 +60,10 @@ func run_test() -> void:
 		quit(1)
 		return
 	game.reset_camera()
+	if not validate_player_facing():
+		quit(1)
+		return
+	game.reset_camera()
 	if not validate_wall_faces():
 		quit(1)
 		return
@@ -146,6 +150,27 @@ func validate_input_rotation() -> bool:
 	if valid:
 		valid = results[0].is_equal_approx(base_direction) and results[1].is_equal_approx(expected_rotated)
 	return valid
+
+func validate_player_facing() -> bool:
+	# The walk/facing sprite must follow the camera-relative (on-screen) movement
+	# direction, so for a fixed input key the sprite must be invariant to camera
+	# yaw. Each cardinal move resolves to an oblique world direction (no axis
+	# boundary), which keeps this regression check deterministic.
+	var screen_inputs := {
+		"left": Vector2(-1, 0),
+		"right": Vector2(1, 0),
+		"top": Vector2(0, -1),
+		"down": Vector2(0, 1),
+	}
+	var expected := {"left": "sw", "right": "ne", "top": "nw", "down": "se"}
+	for angle in [0.0, PI * 0.25, PI * 0.5, -PI * 0.5]:
+		game.camera_angle = angle
+		for key in screen_inputs:
+			var inp: Vector2 = screen_inputs[key]
+			game.player_facing = Vector2(inp.x + inp.y, inp.y - inp.x).normalized().rotated(-game.camera_angle)
+			if game.player_face_name() != String(expected[key]):
+				return false
+	return true
 
 func validate_wall_faces() -> bool:
 	game.camera_angle = PI * 0.5

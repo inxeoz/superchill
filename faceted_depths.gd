@@ -1809,7 +1809,10 @@ func iso_to_screen(world_position: Vector2) -> Vector2:
 	return Vector2(round(projected.x * 0.5) * 2.0, round(projected.y * 0.5) * 2.0)
 
 func player_face_name() -> String:
-	var facing := player_facing.rotated(-camera_angle)
+	# player_facing is the world movement vector, already rotated by -camera_angle
+	# in update_player. Rotate by +camera_angle here so the walk/facing sprite
+	# stays aligned with the on-screen (camera-relative) movement direction.
+	var facing := player_facing.rotated(camera_angle)
 	if facing.x >= 0.0:
 		return "ne" if facing.y < 0.0 else "se"
 	return "nw" if facing.y < 0.0 else "sw"
