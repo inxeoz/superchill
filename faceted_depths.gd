@@ -861,6 +861,12 @@ const SFX_FILES := {
 	"menu_open": "rpg/rpg_menu-open.wav",
 	"level_load": "rpg/rpg_door.wav",
 }
+const MENU_LEVELS := 0
+const MENU_SETTINGS := 1
+const LEVEL_LIST_Y := 170.0
+const LEVEL_ROW_H := 68.0
+const LEVEL_ROW_GAP := 14.0
+const LEVEL_VISIBLE := 5
 var drown_timer := 0.0
 var invulnerability := 0.0
 var shake_strength := 0.0
@@ -893,6 +899,10 @@ var camera_drag_origin := Vector2.ZERO
 var camera_drag_start := Vector2.ZERO
 var _sfx_players: Array = []
 var _sfx_streams: Dictionary = {}
+var menu_page := MENU_LEVELS
+var level_scroll := 0
+var sfx_volume := 1.0
+var sfx_muted := false
 
 func _ready() -> void:
 	random.seed = 260925
@@ -911,7 +921,7 @@ func _setup_sfx() -> void:
 		_sfx_players.append(audio_player)
 
 func _sfx(event_name: String) -> void:
-	if not SFX_FILES.has(event_name) or _sfx_players.is_empty():
+	if sfx_muted or not SFX_FILES.has(event_name) or _sfx_players.is_empty():
 		return
 	var stream: AudioStream = _sfx_streams.get(event_name)
 	if stream == null:
@@ -919,11 +929,14 @@ func _sfx(event_name: String) -> void:
 		_sfx_streams[event_name] = stream
 	if stream == null:
 		return
+	var level_db := linear_to_db(clampf(sfx_volume, 0.0001, 1.0))
 	for audio_player in _sfx_players:
 		if not audio_player.playing:
+			audio_player.volume_db = level_db
 			audio_player.stream = stream
 			audio_player.play()
 			return
+	_sfx_players[0].volume_db = level_db
 	_sfx_players[0].stream = stream
 	_sfx_players[0].play()
 
@@ -935,11 +948,14 @@ func reset_game() -> void:
 func open_level_select() -> void:
 	selected_level = level_index
 	state = "level_select"
+	menu_page = MENU_LEVELS
+	update_level_scroll()
 	message_timer = 0.0
 	_sfx("menu_open")
 
 func move_level_selection(step: int) -> void:
 	selected_level = posmod(selected_level + step, LEVELS.size())
+	update_level_scroll()
 	_sfx("menu_move")
 
 func confirm_level_selection() -> void:
@@ -948,6 +964,42 @@ func confirm_level_selection() -> void:
 
 func close_level_select() -> void:
 	state = "playing"
+
+func adjust_sfx_volume(step: float) -> void:
+	sfx_volume = clampf(sfx_volume + step, 0.0, 1.0)
+	_sfx("menu_move")
+
+func update_level_scroll() -> void:
+	var max_scroll := maxi(0, LEVELS.size() - LEVEL_VISIBLE)
+	if selected_level < level_scroll:
+		level_scroll = selected_level
+	elif selected_level >= level_scroll + LEVEL_VISIBLE:
+		level_scroll = selected_level - LEVEL_VISIBLE + 1
+	level_scroll = clampi(level_scroll, 0, max_scroll)
+
+func draw_level_scrollbar(list_top: float, list_height: float) -> void:
+	var track_x := 1080.0
+	draw_rect(Rect2(track_x, list_top, 12, list_height), Color(muted_color, 0.12), true)
+	var total := LEVELS.size()
+	if total <= LEVEL_VISIBLE:
+		return
+	var max_scroll := total - LEVEL_VISIBLE
+	var thumb_h := list_height * (float(LEVEL_VISIBLE) / float(total))
+	var thumb_y := list_top + float(level_scroll) / float(max_scroll) * (list_height - thumb_h)
+	draw_rect(Rect2(track_x + 2, thumb_y, 8, thumb_h), Color(accent_color, 0.9), true)
+	if level_scroll > 0:
+		draw_scroll_arrow(Vector2(track_x + 6, list_top - 11), true)
+	if level_scroll < max_scroll:
+		draw_scroll_arrow(Vector2(track_x + 6, list_top + list_height + 11), false)
+
+func draw_scroll_arrow(center: Vector2, up: bool) -> void:
+	var s := 5.0
+	var points := PackedVector2Array()
+	if up:
+		points = PackedVector2Array([center + Vector2(0, -s), center + Vector2(s, s * 0.6), center + Vector2(-s, s * 0.6)])
+	else:
+		points = PackedVector2Array([center + Vector2(0, s), center + Vector2(s, -s * 0.6), center + Vector2(-s, -s * 0.6)])
+	draw_colored_polygon(points, Color(accent_color, 0.85))
 
 func load_level(index: int) -> void:
 	level_index = clampi(index, 0, LEVELS.size() - 1)
@@ -1815,14 +1867,28 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		var keycode: int = event.physical_keycode if event.physical_keycode != 0 else event.keycode
 		if state == "level_select":
-			if keycode == KEY_UP or keycode == KEY_W:
-				move_level_selection(-1)
-			elif keycode == KEY_DOWN or keycode == KEY_S:
-				move_level_selection(1)
-			elif keycode == KEY_ENTER or keycode == KEY_KP_ENTER or keycode == KEY_SPACE:
-				confirm_level_selection()
-			elif keycode == KEY_ESCAPE or keycode == KEY_L:
-				close_level_select()
+			if keycode == KEY_TAB:
+				menu_page = MENU_LEVELS if menu_page == MENU_SETTINGS else MENU_SETTINGS
+				_sfx("menu_move")
+			elif menu_page == MENU_LEVELS:
+				if keycode == KEY_UP or keycode == KEY_W:
+					move_level_selection(-1)
+				elif keycode == KEY_DOWN or keycode == KEY_S:
+					move_level_selection(1)
+				elif keycode == KEY_ENTER or keycode == KEY_KP_ENTER or keycode == KEY_SPACE:
+					confirm_level_selection()
+				elif keycode == KEY_ESCAPE or keycode == KEY_L:
+					close_level_select()
+			else:
+				if keycode == KEY_UP or keycode == KEY_W or keycode == KEY_RIGHT or keycode == KEY_D:
+					adjust_sfx_volume(0.1)
+				elif keycode == KEY_DOWN or keycode == KEY_S or keycode == KEY_LEFT or keycode == KEY_A:
+					adjust_sfx_volume(-0.1)
+				elif keycode == KEY_M:
+					sfx_muted = not sfx_muted
+					_sfx("menu_confirm")
+				elif keycode == KEY_ESCAPE or keycode == KEY_L:
+					close_level_select()
 		elif state == "pickup_select":
 			var pickup_entry_count := pickable_litter_entries().size()
 			if keycode == KEY_UP or keycode == KEY_W:
@@ -3130,13 +3196,39 @@ func draw_level_select(viewport: Vector2) -> void:
 	draw_rect(panel, Color(void_color, 0.98), true)
 	draw_line(panel.position, panel.position + Vector2(panel.size.x, 0), accent_color, 2.0)
 	draw_line(panel.position + Vector2(0, panel.size.y), panel.position + panel.size, Color(accent_color, 0.35), 1.0)
+	if menu_page == MENU_SETTINGS:
+		draw_string(ui_font, Vector2(0, 104), "SETTINGS", HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 40, paper_color)
+		draw_string(ui_font, Vector2(0, 138), "Sound and options", HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 16, muted_color)
+		var volume_row := Rect2(220, 210, 840, 72)
+		draw_rect(Rect2(volume_row.position + Vector2(4, 5), volume_row.size), Color(0.0, 0.0, 0.0, 0.22), true)
+		draw_rect(volume_row, Color(ink_color, 0.96), true)
+		draw_line(volume_row.position, volume_row.position + Vector2(volume_row.size.x, 0), accent_color, 2.0)
+		draw_string(ui_font, volume_row.position + Vector2(28, 44), "SFX VOLUME", HORIZONTAL_ALIGNMENT_LEFT, -1, 20, paper_color)
+		var filled := int(round(sfx_volume * 10.0))
+		for block in range(10):
+			var block_color := accent_color if block < filled else Color(muted_color, 0.3)
+			draw_hud_diamond(volume_row.position + Vector2(300 + block * 30, 36), 12.0, block_color)
+		draw_string(ui_font, volume_row.position + Vector2(300 + 10 * 30 + 14, 44), "%d%%" % int(round(sfx_volume * 100.0)), HORIZONTAL_ALIGNMENT_LEFT, -1, 22, paper_color)
+		var mute_row := Rect2(220, 300, 840, 72)
+		draw_rect(Rect2(mute_row.position + Vector2(4, 5), mute_row.size), Color(0.0, 0.0, 0.0, 0.22), true)
+		draw_rect(mute_row, Color(ink_color, 0.96), true)
+		draw_line(mute_row.position, mute_row.position + Vector2(mute_row.size.x, 0), Color(muted_color, 0.4), 1.0)
+		draw_string(ui_font, mute_row.position + Vector2(28, 44), "SFX MUTED", HORIZONTAL_ALIGNMENT_LEFT, -1, 20, paper_color)
+		draw_string(ui_font, mute_row.position + Vector2(300, 44), "ON" if sfx_muted else "OFF", HORIZONTAL_ALIGNMENT_LEFT, -1, 20, danger_color if sfx_muted else safe_color)
+		var footer := "W / S or arrows adjust     M mute     TAB levels     L / ESC close"
+		draw_string(ui_font, Vector2(0, 632), footer, HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 14, muted_color)
+		return
 	draw_string(ui_font, Vector2(0, 104), "SELECT LEVEL", HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 40, paper_color)
 	draw_string(ui_font, Vector2(0, 138), "Choose a remembered path", HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 16, muted_color)
-	for index in range(LEVELS.size()):
+	var row_spacing := LEVEL_ROW_H + LEVEL_ROW_GAP
+	for row_index in range(LEVEL_VISIBLE):
+		var index := level_scroll + row_index
+		if index >= LEVELS.size():
+			break
 		var level: Dictionary = LEVELS[index]
 		var selected := index == selected_level
 		var surface_level := String(level.get("kind", "dungeon")) == "surface"
-		var row := Rect2(220, 180 + index * 88, 840, 68)
+		var row := Rect2(220, LEVEL_LIST_Y + row_index * row_spacing, 840, LEVEL_ROW_H)
 		var row_color := accent_color if selected else muted_color
 		var row_fill := Color(void_color, 0.98) if selected else Color(ink_color, 0.96)
 		draw_rect(Rect2(row.position + Vector2(4, 5), row.size), Color(0.0, 0.0, 0.0, 0.22), true)
@@ -3150,7 +3242,9 @@ func draw_level_select(viewport: Vector2) -> void:
 		var summary := "WATERFALL  •  EXPLORE" if jungle_level else ("BOTTLES  •  CRAFT  •  RIVER" if surface_level else "3 SHARDS  •  5 ENEMIES")
 		draw_string(ui_font, row.position + Vector2(112, 52), detail, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, row_color if selected else muted_color)
 		draw_string(ui_font, row.position + Vector2(600, 40), summary, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, row_color if selected else muted_color)
-	var footer := "W / S or arrows select     ENTER / SPACE play     L / ESC close"
+	var list_height := LEVEL_VISIBLE * LEVEL_ROW_H + (LEVEL_VISIBLE - 1) * LEVEL_ROW_GAP
+	draw_level_scrollbar(LEVEL_LIST_Y, list_height)
+	var footer := "W / S or arrows scroll     ENTER / SPACE play     TAB settings     L / ESC close"
 	draw_string(ui_font, Vector2(0, 632), footer, HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 14, muted_color)
 
 func craft_element_label(element_index: int) -> String:
