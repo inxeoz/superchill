@@ -901,6 +901,8 @@ var _sfx_players: Array = []
 var _sfx_streams: Dictionary = {}
 var menu_page := MENU_LEVELS
 var level_scroll := 0
+var menu_setting := 0
+var paused := false
 var sfx_volume := 1.0
 var sfx_muted := false
 
@@ -941,14 +943,20 @@ func _sfx(event_name: String) -> void:
 	_sfx_players[0].play()
 
 func reset_game() -> void:
+	paused = false
 	level_index = 0
 	unlocked_ideas.clear()
 	load_level(level_index)
+
+func toggle_pause() -> void:
+	paused = not paused
+	_sfx("menu_move")
 
 func open_level_select() -> void:
 	selected_level = level_index
 	state = "level_select"
 	menu_page = MENU_LEVELS
+	menu_setting = 0
 	update_level_scroll()
 	message_timer = 0.0
 	_sfx("menu_open")
@@ -968,6 +976,13 @@ func close_level_select() -> void:
 func adjust_sfx_volume(step: float) -> void:
 	sfx_volume = clampf(sfx_volume + step, 0.0, 1.0)
 	_sfx("menu_move")
+
+func settings_adjust(direction: int) -> void:
+	if menu_setting == 0:
+		adjust_sfx_volume(0.1 * float(direction))
+	else:
+		sfx_muted = not sfx_muted
+		_sfx("menu_confirm")
 
 func update_level_scroll() -> void:
 	var max_scroll := maxi(0, LEVELS.size() - LEVEL_VISIBLE)
@@ -1192,6 +1207,10 @@ func build_walkable() -> void:
 				water_cells[cell] = true
 
 func _process(delta: float) -> void:
+	if paused:
+		elapsed += delta
+		queue_redraw()
+		return
 	elapsed += delta
 	message_timer = maxf(0.0, message_timer - delta)
 	attack_cooldown = maxf(0.0, attack_cooldown - delta)
@@ -1855,6 +1874,12 @@ func handle_camera_motion(event: InputEventMouseMotion) -> void:
 		set_camera_offset(camera_drag_start + event.position - camera_drag_origin)
 
 func _unhandled_input(event: InputEvent) -> void:
+	if paused:
+		if event is InputEventKey and event.pressed and not event.echo:
+			var pause_key: int = event.physical_keycode if event.physical_keycode != 0 else event.keycode
+			if pause_key == KEY_P or pause_key == KEY_ESCAPE:
+				toggle_pause()
+		return
 	if event is InputEventMouseButton:
 		handle_camera_button(event)
 		get_viewport().set_input_as_handled()
@@ -1880,13 +1905,13 @@ func _unhandled_input(event: InputEvent) -> void:
 				elif keycode == KEY_ESCAPE or keycode == KEY_L:
 					close_level_select()
 			else:
-				if keycode == KEY_UP or keycode == KEY_W or keycode == KEY_RIGHT or keycode == KEY_D:
-					adjust_sfx_volume(0.1)
-				elif keycode == KEY_DOWN or keycode == KEY_S or keycode == KEY_LEFT or keycode == KEY_A:
-					adjust_sfx_volume(-0.1)
-				elif keycode == KEY_M:
-					sfx_muted = not sfx_muted
-					_sfx("menu_confirm")
+				if keycode == KEY_UP or keycode == KEY_W or keycode == KEY_DOWN or keycode == KEY_S:
+					menu_setting = 0 if menu_setting == 1 else 1
+					_sfx("menu_move")
+				elif keycode == KEY_RIGHT or keycode == KEY_D:
+					settings_adjust(1)
+				elif keycode == KEY_LEFT or keycode == KEY_A:
+					settings_adjust(-1)
 				elif keycode == KEY_ESCAPE or keycode == KEY_L:
 					close_level_select()
 		elif state == "pickup_select":
@@ -1937,6 +1962,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				camera_angle = clampf(camera_angle - deg_to_rad(15.0), -PI, PI)
 			elif keycode == KEY_C:
 				reset_camera()
+			elif keycode == KEY_P and state == "playing":
+				toggle_pause()
 			elif keycode == KEY_L:
 				open_level_select()
 			elif keycode == KEY_R:
@@ -3199,23 +3226,27 @@ func draw_level_select(viewport: Vector2) -> void:
 	if menu_page == MENU_SETTINGS:
 		draw_string(ui_font, Vector2(0, 104), "SETTINGS", HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 40, paper_color)
 		draw_string(ui_font, Vector2(0, 138), "Sound and options", HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 16, muted_color)
+		var volume_focus := menu_setting == 0
 		var volume_row := Rect2(220, 210, 840, 72)
 		draw_rect(Rect2(volume_row.position + Vector2(4, 5), volume_row.size), Color(0.0, 0.0, 0.0, 0.22), true)
-		draw_rect(volume_row, Color(ink_color, 0.96), true)
-		draw_line(volume_row.position, volume_row.position + Vector2(volume_row.size.x, 0), accent_color, 2.0)
-		draw_string(ui_font, volume_row.position + Vector2(28, 44), "SFX VOLUME", HORIZONTAL_ALIGNMENT_LEFT, -1, 20, paper_color)
+		draw_rect(volume_row, Color(void_color, 0.98) if volume_focus else Color(ink_color, 0.96), true)
+		draw_line(volume_row.position, volume_row.position + Vector2(volume_row.size.x, 0), accent_color if volume_focus else Color(muted_color, 0.4), 2.0 if volume_focus else 1.0)
+		draw_hud_diamond(volume_row.position + Vector2(34, 36), 10.0 if volume_focus else 6.0, accent_color if volume_focus else Color(muted_color, 0.45))
+		draw_string(ui_font, volume_row.position + Vector2(66, 44), "SFX VOLUME", HORIZONTAL_ALIGNMENT_LEFT, -1, 20, paper_color if volume_focus else muted_color)
 		var filled := int(round(sfx_volume * 10.0))
 		for block in range(10):
 			var block_color := accent_color if block < filled else Color(muted_color, 0.3)
 			draw_hud_diamond(volume_row.position + Vector2(300 + block * 30, 36), 12.0, block_color)
 		draw_string(ui_font, volume_row.position + Vector2(300 + 10 * 30 + 14, 44), "%d%%" % int(round(sfx_volume * 100.0)), HORIZONTAL_ALIGNMENT_LEFT, -1, 22, paper_color)
+		var mute_focus := menu_setting == 1
 		var mute_row := Rect2(220, 300, 840, 72)
 		draw_rect(Rect2(mute_row.position + Vector2(4, 5), mute_row.size), Color(0.0, 0.0, 0.0, 0.22), true)
-		draw_rect(mute_row, Color(ink_color, 0.96), true)
-		draw_line(mute_row.position, mute_row.position + Vector2(mute_row.size.x, 0), Color(muted_color, 0.4), 1.0)
-		draw_string(ui_font, mute_row.position + Vector2(28, 44), "SFX MUTED", HORIZONTAL_ALIGNMENT_LEFT, -1, 20, paper_color)
+		draw_rect(mute_row, Color(void_color, 0.98) if mute_focus else Color(ink_color, 0.96), true)
+		draw_line(mute_row.position, mute_row.position + Vector2(mute_row.size.x, 0), accent_color if mute_focus else Color(muted_color, 0.4), 2.0 if mute_focus else 1.0)
+		draw_hud_diamond(mute_row.position + Vector2(34, 36), 10.0 if mute_focus else 6.0, accent_color if mute_focus else Color(muted_color, 0.45))
+		draw_string(ui_font, mute_row.position + Vector2(66, 44), "SFX MUTED", HORIZONTAL_ALIGNMENT_LEFT, -1, 20, paper_color if mute_focus else muted_color)
 		draw_string(ui_font, mute_row.position + Vector2(300, 44), "ON" if sfx_muted else "OFF", HORIZONTAL_ALIGNMENT_LEFT, -1, 20, danger_color if sfx_muted else safe_color)
-		var footer := "W / S or arrows adjust     M mute     TAB levels     L / ESC close"
+		var footer := "W / S focus     A / D adjust     TAB levels     L / ESC close"
 		draw_string(ui_font, Vector2(0, 632), footer, HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 14, muted_color)
 		return
 	draw_string(ui_font, Vector2(0, 104), "SELECT LEVEL", HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 40, paper_color)
@@ -3406,7 +3437,7 @@ func draw_hud(viewport: Vector2) -> void:
 			draw_hud_diamond(center, 10.0, danger_color.lightened(0.08))
 		else:
 			draw_hud_diamond(center, 10.0, Color(muted_color, 0.2))
-	var controls := "WASD MOVE  SHIFT RUN  SPACE JUMP  ENTER STRIKE  F SEARCH/PICK  B TABLE  G WEAR/DROP  L LEVELS  R RESTART" if level_kind == "surface" else "WASD MOVE  ENTER STRIKE  DRAG PAN  WHEEL ZOOM  Q/E YAW  C RESET  L LEVELS  R RESTART"
+	var controls := "WASD MOVE  SHIFT RUN  SPACE JUMP  ENTER STRIKE  F SEARCH/PICK  B TABLE  G WEAR/DROP  L LEVELS  P PAUSE  R RESTART" if level_kind == "surface" else "WASD MOVE  ENTER STRIKE  DRAG PAN  WHEEL ZOOM  Q/E YAW  C RESET  L LEVELS  P PAUSE  R RESTART"
 	var controls_size := ui_font.get_string_size(controls, HORIZONTAL_ALIGNMENT_LEFT, -1, 13)
 	var controls_rect := Rect2(viewport.x - controls_size.x - 68, viewport.y - 54, controls_size.x + 38, 30)
 	draw_plaque(controls_rect, slate_light_color)
@@ -3415,6 +3446,8 @@ func draw_hud(viewport: Vector2) -> void:
 		draw_message(viewport)
 	if state != "playing":
 		draw_state_overlay(viewport)
+	if paused:
+		draw_pause_overlay(viewport)
 
 func draw_bottle_plaque(rect: Rect2) -> void:
 	draw_plaque(rect, safe_color)
@@ -3479,3 +3512,10 @@ func draw_state_overlay(viewport: Vector2) -> void:
 	var subtitle := "All four depths are clear" if state == "won" else "Press R to restart this depth"
 	draw_string(ui_font, Vector2(0, center.y + 18), title, HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 42, paper_color)
 	draw_string(ui_font, Vector2(0, center.y + 58), subtitle, HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 17, Color(accent, 0.9))
+
+func draw_pause_overlay(viewport: Vector2) -> void:
+	draw_rect(Rect2(Vector2.ZERO, viewport), Color(void_color, 0.82), true)
+	var center := Vector2(viewport.x * 0.5, viewport.y * 0.48)
+	draw_crystal(center + Vector2(0, -76), 42.0 + sin(elapsed * 2.2) * 2.0, accent_color)
+	draw_string(ui_font, Vector2(0, center.y + 18), "PAUSED", HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 42, paper_color)
+	draw_string(ui_font, Vector2(0, center.y + 58), "Press P to resume", HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 17, Color(accent_color, 0.9))
