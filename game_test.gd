@@ -68,6 +68,10 @@ func run_test() -> void:
 		quit(1)
 		return
 	game.reset_camera()
+	if not validate_restart_confirm():
+		quit(1)
+		return
+	game.reset_camera()
 	if not validate_wall_faces():
 		quit(1)
 		return
@@ -217,6 +221,57 @@ func validate_attack_and_jump() -> bool:
 	Input.parse_input_event(space_up)
 	await process_frame
 	return true
+
+func validate_restart_confirm() -> bool:
+	game.load_level(1)
+	if game.state != "playing":
+		return false
+	var r_down := InputEventKey.new()
+	r_down.physical_keycode = KEY_R
+	r_down.keycode = KEY_R
+	r_down.pressed = true
+	game._unhandled_input(r_down)
+	if game.state != "restart_confirm" or game.restart_selected != 1:
+		return false
+	# R while the dialog is open must not reopen/close it.
+	game._unhandled_input(r_down)
+	if game.state != "restart_confirm":
+		return false
+	# Default is NO: confirming returns to playing without reloading.
+	var level_before: int = game.level_index
+	var enter := InputEventKey.new()
+	enter.physical_keycode = KEY_ENTER
+	enter.keycode = KEY_ENTER
+	enter.pressed = true
+	game._unhandled_input(enter)
+	if game.state != "playing" or game.level_index != level_before:
+		return false
+	# Mark progress so a real reload is detectable.
+	for shard in game.shards:
+		shard["taken"] = true
+	game.shards_collected = game.shard_cells.size()
+	# ESC closes the dialog without restarting.
+	game._unhandled_input(r_down)
+	var esc := InputEventKey.new()
+	esc.physical_keycode = KEY_ESCAPE
+	esc.keycode = KEY_ESCAPE
+	esc.pressed = true
+	game._unhandled_input(esc)
+	if game.state != "playing" or game.shards_collected != game.shard_cells.size():
+		return false
+	# Reopen, select RESTART, confirm: level reloads and progress resets.
+	game._unhandled_input(r_down)
+	if game.state != "restart_confirm" or game.restart_selected != 1:
+		return false
+	var down := InputEventKey.new()
+	down.physical_keycode = KEY_DOWN
+	down.keycode = KEY_DOWN
+	down.pressed = true
+	game._unhandled_input(down)
+	if game.restart_selected != 0:
+		return false
+	game._unhandled_input(enter)
+	return game.state == "playing" and game.shards_collected == 0 and not bool(game.shards[0]["taken"])
 
 func validate_wall_faces() -> bool:
 	game.camera_angle = PI * 0.5

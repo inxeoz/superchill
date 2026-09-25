@@ -902,6 +902,7 @@ var _sfx_streams: Dictionary = {}
 var menu_page := MENU_LEVELS
 var level_scroll := 0
 var menu_setting := 0
+var restart_selected := 1
 var paused := false
 var sfx_volume := 1.0
 var sfx_muted := false
@@ -972,6 +973,29 @@ func confirm_level_selection() -> void:
 
 func close_level_select() -> void:
 	state = "playing"
+
+func open_restart_confirm() -> void:
+	if state != "playing":
+		return
+	restart_selected = 1
+	state = "restart_confirm"
+	message_timer = 0.0
+	_sfx("menu_open")
+
+func confirm_restart() -> void:
+	if state != "restart_confirm":
+		return
+	_sfx("menu_confirm")
+	if restart_selected == 0:
+		load_level(level_index)
+	else:
+		state = "playing"
+
+func close_restart_confirm() -> void:
+	if state != "restart_confirm":
+		return
+	state = "playing"
+	_sfx("menu_move")
 
 func adjust_sfx_volume(step: float) -> void:
 	sfx_volume = clampf(sfx_volume + step, 0.0, 1.0)
@@ -1946,6 +1970,14 @@ func _unhandled_input(event: InputEvent) -> void:
 				pick_up_life_jacket()
 			elif keycode == KEY_B or keycode == KEY_ESCAPE:
 				close_craft_table()
+		elif state == "restart_confirm":
+			if keycode == KEY_UP or keycode == KEY_W or keycode == KEY_DOWN or keycode == KEY_S:
+				restart_selected = 0 if restart_selected == 1 else 1
+				_sfx("menu_move")
+			elif keycode == KEY_ENTER or keycode == KEY_KP_ENTER or keycode == KEY_SPACE:
+				confirm_restart()
+			elif keycode == KEY_ESCAPE:
+				close_restart_confirm()
 		else:
 			if level_kind == "surface" and keycode == KEY_F:
 				if not try_collect_spirit():
@@ -1967,7 +1999,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			elif keycode == KEY_L:
 				open_level_select()
 			elif keycode == KEY_R:
-				if state == "won" and level_index == LEVELS.size() - 1:
+				if state == "playing":
+					open_restart_confirm()
+				elif state == "won" and level_index == LEVELS.size() - 1:
 					reset_game()
 				else:
 					load_level(level_index)
@@ -3306,6 +3340,27 @@ func draw_pickup_select(viewport: Vector2) -> void:
 		draw_string(ui_font, row.position + Vector2(0, 29), "×%02d" % int(entry["count"]), HORIZONTAL_ALIGNMENT_RIGHT, row.size.x - 16, 15, row_color)
 	draw_string(ui_font, Vector2(0, 472), "W / S select     ENTER / SPACE pick up     ESC / B close", HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 14, muted_color)
 
+func draw_restart_confirm(viewport: Vector2) -> void:
+	draw_rect(Rect2(Vector2.ZERO, viewport), Color(void_color, 0.82), true)
+	var panel := Rect2(330, 150, 620, 260)
+	draw_rect(Rect2(panel.position + Vector2(7, 9), panel.size), Color(0.0, 0.0, 0.0, 0.34), true)
+	draw_rect(panel, Color(void_color, 0.98), true)
+	draw_line(panel.position, panel.position + Vector2(panel.size.x, 0), accent_color, 2.0)
+	draw_line(panel.position + Vector2(0, panel.size.y), panel.position + panel.size, Color(accent_color, 0.35), 1.0)
+	draw_string(ui_font, Vector2(0, 104), "RESTART LEVEL?", HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 40, paper_color)
+	draw_string(ui_font, Vector2(0, 138), "Progress in this level will be lost", HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 16, muted_color)
+	for option in range(2):
+		var label := "RESTART" if option == 0 else "NO"
+		var selected := option == restart_selected
+		var row := Rect2(370, 196 + option * 56, 540, 44)
+		var row_color := accent_color if selected else muted_color
+		draw_rect(Rect2(row.position + Vector2(4, 5), row.size), Color(0.0, 0.0, 0.0, 0.24), true)
+		draw_rect(row, Color(ink_color, 0.96) if not selected else Color(void_color, 0.98), true)
+		draw_line(row.position, row.position + Vector2(row.size.x, 0), row_color if selected else Color(muted_color, 0.3), 2.0 if selected else 1.0)
+		draw_hud_diamond(row.position + Vector2(26, 22), 8.0 if selected else 5.0, row_color)
+		draw_string(ui_font, row.position + Vector2(0, 29), label, HORIZONTAL_ALIGNMENT_CENTER, row.size.x, 15, paper_color if selected else muted_color)
+	draw_string(ui_font, Vector2(0, 472), "W / S select     ENTER / SPACE confirm     ESC close", HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 14, muted_color)
+
 func draw_wrapped_text(text: String, pos: Vector2, max_width: float, font_size: int, color: Color) -> float:
 	var words := text.split(" ")
 	var line := ""
@@ -3444,8 +3499,10 @@ func draw_hud(viewport: Vector2) -> void:
 	draw_string(ui_font, controls_rect.position + Vector2(19, 20), controls, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted_color)
 	if message_timer > 0.0:
 		draw_message(viewport)
-	if state != "playing":
+	if state == "lost" or state == "won":
 		draw_state_overlay(viewport)
+	if state == "restart_confirm":
+		draw_restart_confirm(viewport)
 	if paused:
 		draw_pause_overlay(viewport)
 
