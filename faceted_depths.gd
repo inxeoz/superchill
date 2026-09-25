@@ -8,35 +8,184 @@ const PLAYER_SPEED := 3.8
 const ENEMY_SPEED := 1.45
 const ATTACK_COOLDOWN := 0.34
 const MAX_HEALTH := 5
-const START_CELL := Vector2i(1, 7)
-const EXIT_CELL := Vector2i(10, 1)
-const SHARD_CELLS := [Vector2i(2, 1), Vector2i(5, 4), Vector2i(9, 2)]
-const ENEMY_SPAWNS := [Vector2i(3, 6), Vector2i(4, 2), Vector2i(6, 4), Vector2i(8, 6), Vector2i(10, 3)]
-const MAP := [
-	"############",
-	"#....#.....#",
-	"#....#.....#",
-	"#.##.##.##.#",
-	"#......#...#",
-	"#.####.#.#.#",
-	"#....#...#.#",
-	"#..........#",
-	"############",
+const LEVELS := [
+	{
+		"name": "FACETED DEPTHS",
+		"map": [
+			"############",
+			"#....#.....#",
+			"#....#.....#",
+			"#.##.##.##.#",
+			"#......#...#",
+			"#.####.#.#.#",
+			"#....#...#.#",
+			"#..........#",
+			"############",
+		],
+		"shards": [Vector2i(2, 1), Vector2i(5, 4), Vector2i(9, 2)],
+		"spawns": [Vector2i(3, 6), Vector2i(4, 2), Vector2i(6, 4), Vector2i(8, 6), Vector2i(10, 3)],
+		"start": Vector2i(1, 7),
+		"exit": Vector2i(10, 1),
+		"enemy_kind": "shardling",
+		"enemy_health": 2,
+		"enemy_speed": 1.45,
+		"void": "060914",
+		"deep": "0b1020",
+		"ink": "111629",
+		"ink_soft": "1b2238",
+		"wall_alt": "202840",
+		"slate": "26334d",
+		"slate_light": "364765",
+		"floor_mist": "303a54",
+		"floor_petrol": "294654",
+		"floor_plum": "40344f",
+		"accent": "f0ad4e",
+		"safe": "6de5df",
+		"danger": "c04a5d",
+		"enemy": "c04a5d",
+		"enemy_accent": "f0ad4e",
+		"gate": "6b5268",
+		"paper": "e8edf5",
+		"muted": "9aa8bd",
+	},
+	{
+		"name": "MOSSGLASS CISTERN",
+		"map": [
+			"############",
+			"#.#...#....#",
+			"#.##....#..#",
+			"#.#..###.#.#",
+			"#....##...##",
+			"##.........#",
+			"#..##.#...##",
+			"#...##..#.##",
+			"############",
+		],
+		"shards": [Vector2i(3, 1), Vector2i(7, 4), Vector2i(9, 6)],
+		"spawns": [Vector2i(4, 2), Vector2i(5, 5), Vector2i(8, 5), Vector2i(2, 6), Vector2i(10, 3)],
+		"start": Vector2i(1, 7),
+		"exit": Vector2i(10, 1),
+		"enemy_kind": "mireling",
+		"enemy_health": 3,
+		"enemy_speed": 1.1,
+		"void": "041512",
+		"deep": "0b241e",
+		"ink": "12352d",
+		"ink_soft": "1c4a3d",
+		"wall_alt": "28624b",
+		"slate": "245648",
+		"slate_light": "32765b",
+		"floor_mist": "2a6750",
+		"floor_petrol": "3c8060",
+		"floor_plum": "456d45",
+		"accent": "b7e36b",
+		"safe": "7ef0c1",
+		"danger": "d77955",
+		"enemy": "4f9e69",
+		"enemy_accent": "d9f27c",
+		"gate": "477b68",
+		"paper": "eaf6dc",
+		"muted": "a6c4aa",
+	},
+	{
+		"name": "EMBER VAULT",
+		"map": [
+			"############",
+			"##....#..#.#",
+			"###..#.....#",
+			"#..#...#...#",
+			"#...#....#.#",
+			"#...###....#",
+			"#.#.....##.#",
+			"#..#.###...#",
+			"############",
+		],
+		"shards": [Vector2i(2, 1), Vector2i(5, 4), Vector2i(9, 2)],
+		"spawns": [Vector2i(3, 6), Vector2i(4, 2), Vector2i(6, 4), Vector2i(8, 5), Vector2i(10, 5)],
+		"start": Vector2i(1, 7),
+		"exit": Vector2i(10, 1),
+		"enemy_kind": "forge_golem",
+		"enemy_health": 4,
+		"enemy_speed": 0.9,
+		"void": "140b08",
+		"deep": "26130b",
+		"ink": "321a13",
+		"ink_soft": "4a281b",
+		"wall_alt": "6b3422",
+		"slate": "5a3020",
+		"slate_light": "81452a",
+		"floor_mist": "6b3422",
+		"floor_petrol": "8a4526",
+		"floor_plum": "3a2420",
+		"accent": "f7c45b",
+		"safe": "74d4c4",
+		"danger": "e0523d",
+		"enemy": "d85a32",
+		"enemy_accent": "f7c45b",
+		"gate": "8a4934",
+		"paper": "ffeed2",
+		"muted": "c7a58a",
+	},
+	{
+		"name": "STARFALL RELIQUARY",
+		"map": [
+			"############",
+			"#.......#..#",
+			"#.#..###...#",
+			"#.......#..#",
+			"##.#...#...#",
+			"##..#...#..#",
+			"##.#.##...##",
+			"#.......#..#",
+			"############",
+		],
+		"shards": [Vector2i(2, 1), Vector2i(5, 4), Vector2i(9, 2)],
+		"spawns": [Vector2i(3, 7), Vector2i(4, 2), Vector2i(6, 5), Vector2i(8, 6), Vector2i(10, 4)],
+		"start": Vector2i(1, 7),
+		"exit": Vector2i(10, 1),
+		"enemy_kind": "astral_sentry",
+		"enemy_health": 3,
+		"enemy_speed": 1.7,
+		"void": "08091b",
+		"deep": "111333",
+		"ink": "1b1e3b",
+		"ink_soft": "292651",
+		"wall_alt": "353565",
+		"slate": "353565",
+		"slate_light": "4a4a7d",
+		"floor_mist": "3e3d70",
+		"floor_petrol": "314f72",
+		"floor_plum": "563b70",
+		"accent": "e6a6ff",
+		"safe": "7de7ff",
+		"danger": "e05c9b",
+		"enemy": "7656b8",
+		"enemy_accent": "e6a6ff",
+		"gate": "5b4a86",
+		"paper": "f3edff",
+		"muted": "a9a6cf",
+	},
 ]
 
-const COLOR_VOID := Color("060914")
-const COLOR_DEEP := Color("0b1020")
-const COLOR_INK := Color("111629")
-const COLOR_INK_SOFT := Color("1b2238")
-const COLOR_SLATE := Color("26334d")
-const COLOR_SLATE_LIGHT := Color("364765")
-const COLOR_AMETHYST := Color("6e4b8b")
-const COLOR_TEAL := Color("2a7d7b")
-const COLOR_AMBER := Color("f0ad4e")
-const COLOR_CYAN := Color("6de5df")
-const COLOR_OXBLOOD := Color("c04a5d")
-const COLOR_PAPER := Color("e8edf5")
-const COLOR_MUTED := Color("9aa8bd")
+var void_color := Color("060914")
+var deep_color := Color("0b1020")
+var ink_color := Color("111629")
+var ink_soft_color := Color("1b2238")
+var wall_alt_color := Color("202840")
+var slate_color := Color("26334d")
+var slate_light_color := Color("364765")
+var floor_mist_color := Color("303a54")
+var floor_petrol_color := Color("294654")
+var floor_plum_color := Color("40344f")
+var accent_color := Color("f0ad4e")
+var safe_color := Color("6de5df")
+var danger_color := Color("c04a5d")
+var enemy_color := Color("c04a5d")
+var enemy_accent_color := Color("f0ad4e")
+var gate_color := Color("6b5268")
+var paper_color := Color("e8edf5")
+var muted_color := Color("9aa8bd")
+var fallback_color := Color("6e4b8b")
 
 var walkable: Dictionary = {}
 var flow: Dictionary = {}
@@ -61,6 +210,16 @@ var screen_shake := Vector2.ZERO
 var last_player_cell := Vector2i(-999, -999)
 var ui_font: Font
 var random := RandomNumberGenerator.new()
+var map_rows: Array = []
+var shard_cells: Array = []
+var enemy_spawns: Array = []
+var start_cell := Vector2i.ZERO
+var exit_cell := Vector2i.ZERO
+var level_index := 0
+var level_name := "FACETED DEPTHS"
+var enemy_kind := "shardling"
+var enemy_health := 2
+var enemy_speed := ENEMY_SPEED
 
 func _ready() -> void:
 	random.seed = 260925
@@ -82,13 +241,32 @@ func load_player_assets() -> void:
 		sword_frames[direction] = load(base_path + "sword_" + direction + ".png") as Texture2D
 
 func reset_game() -> void:
+	level_index = 0
+	load_level(level_index)
+
+func load_level(index: int) -> void:
+	level_index = clampi(index, 0, LEVELS.size() - 1)
+	var level: Dictionary = LEVELS[level_index]
+	level_name = String(level["name"])
+	var rows: Array = level["map"]
+	map_rows = rows
+	var configured_shards: Array = level["shards"]
+	shard_cells = configured_shards
+	var configured_spawns: Array = level["spawns"]
+	enemy_spawns = configured_spawns
+	start_cell = Vector2i(level["start"])
+	exit_cell = Vector2i(level["exit"])
+	enemy_kind = String(level["enemy_kind"])
+	enemy_health = int(level["enemy_health"])
+	enemy_speed = float(level["enemy_speed"])
+	apply_level_colors(level)
 	build_walkable()
-	player_position = Vector2(START_CELL) + Vector2(0.5, 0.5)
+	player_position = Vector2(start_cell) + Vector2(0.5, 0.5)
 	player_facing = Vector2(1.0, 1.0).normalized()
 	health = MAX_HEALTH
 	shards_collected = 0
 	state = "playing"
-	message = "Recover the three light shards"
+	message = "Recover the three light shards" if level_index == 0 else "Descend to " + level_name
 	message_timer = 3.0
 	elapsed = 0.0
 	walk_animation = 0.0
@@ -100,31 +278,54 @@ func reset_game() -> void:
 	shards.clear()
 	enemies.clear()
 	effects.clear()
-	for index in range(SHARD_CELLS.size()):
-		var cell: Vector2i = SHARD_CELLS[index]
+	for shard_index in range(shard_cells.size()):
+		var cell: Vector2i = shard_cells[shard_index]
 		shards.append({
 			"position": Vector2(cell) + Vector2(0.5, 0.5),
 			"taken": false,
-			"phase": index * 1.7,
+			"phase": shard_index * 1.7,
 		})
 	rebuild_flow()
-	for index in range(ENEMY_SPAWNS.size()):
-		var cell: Vector2i = ENEMY_SPAWNS[index]
+	for spawn_index in range(enemy_spawns.size()):
+		var cell: Vector2i = enemy_spawns[spawn_index]
 		if not walkable.has(cell) or not flow.has(cell):
 			continue
 		var enemy_index := enemies.size()
 		enemies.append({
 			"position": Vector2(cell) + Vector2(0.5, 0.5),
-			"health": 2,
+			"kind": enemy_kind,
+			"health": enemy_health,
+			"speed": enemy_speed,
 			"hit_flash": 0.0,
 			"attack_cooldown": 0.45 + enemy_index * 0.08,
 			"phase": enemy_index * 0.9,
 		})
 
+func apply_level_colors(level: Dictionary) -> void:
+	void_color = Color(String(level["void"]))
+	deep_color = Color(String(level["deep"]))
+	ink_color = Color(String(level["ink"]))
+	ink_soft_color = Color(String(level["ink_soft"]))
+	wall_alt_color = Color(String(level["wall_alt"]))
+	slate_color = Color(String(level["slate"]))
+	slate_light_color = Color(String(level["slate_light"]))
+	floor_mist_color = Color(String(level["floor_mist"]))
+	floor_petrol_color = Color(String(level["floor_petrol"]))
+	floor_plum_color = Color(String(level["floor_plum"]))
+	accent_color = Color(String(level["accent"]))
+	safe_color = Color(String(level["safe"]))
+	danger_color = Color(String(level["danger"]))
+	enemy_color = Color(String(level["enemy"]))
+	enemy_accent_color = Color(String(level["enemy_accent"]))
+	gate_color = Color(String(level["gate"]))
+	paper_color = Color(String(level["paper"]))
+	muted_color = Color(String(level["muted"]))
+	fallback_color = floor_plum_color.lightened(0.15)
+
 func build_walkable() -> void:
 	walkable.clear()
-	for y in range(MAP.size()):
-		var row: String = MAP[y]
+	for y in range(map_rows.size()):
+		var row: String = map_rows[y]
 		for x in range(row.length()):
 			if row[x] != "#":
 				walkable[Vector2i(x, y)] = true
@@ -231,7 +432,7 @@ func update_enemies(delta: float) -> void:
 		if next == current:
 			continue
 		var target := Vector2(next) + Vector2(0.5, 0.5)
-		var movement := (target - enemy_position).normalized() * ENEMY_SPEED * delta
+		var movement := (target - enemy_position).normalized() * float(enemy["speed"]) * delta
 		var candidate := move_with_collisions(enemy_position, movement, 0.2)
 		if can_occupy(candidate, 0.2):
 			enemy["position"] = candidate
@@ -247,7 +448,7 @@ func attack() -> void:
 		"age": 0.0,
 		"life": 0.2,
 		"phase": 0.0,
-		"color": COLOR_AMBER,
+		"color": accent_color,
 	})
 	var connected := false
 	for index in range(enemies.size() - 1, -1, -1):
@@ -260,9 +461,9 @@ func attack() -> void:
 			connected = true
 			enemy["health"] = int(enemy["health"]) - 1
 			enemy["hit_flash"] = 0.18
-			spawn_burst(enemy_position, COLOR_CYAN)
+			spawn_burst(enemy_position, safe_color)
 			if int(enemy["health"]) <= 0:
-				spawn_burst(enemy_position, COLOR_OXBLOOD, 10)
+				spawn_burst(enemy_position, danger_color, 10)
 				enemies.remove_at(index)
 	if connected:
 		add_shake(0.28)
@@ -273,7 +474,7 @@ func hurt_player() -> void:
 	health = maxi(0, health - 1)
 	invulnerability = 0.85
 	add_shake(0.5)
-	spawn_burst(player_position, COLOR_OXBLOOD)
+	spawn_burst(player_position, danger_color)
 	if health <= 0:
 		state = "lost"
 		message = "The depths reclaimed the light"
@@ -285,19 +486,22 @@ func collect_shards() -> void:
 			shard["taken"] = true
 			shards_collected += 1
 			health = mini(MAX_HEALTH, health + 1)
-			spawn_burst(shard["position"], COLOR_CYAN, 12)
+			spawn_burst(shard["position"], safe_color, 12)
 			add_shake(0.22)
-			if shards_collected >= SHARD_CELLS.size():
-				message = "The gate is open — find the northern seal"
+			if shards_collected >= shard_cells.size():
+				message = "The gate is open — find the exit"
 				message_timer = 4.0
 			else:
-				message = "Light shard " + str(shards_collected) + " / " + str(SHARD_CELLS.size())
+				message = "Light shard " + str(shards_collected) + " / " + str(shard_cells.size())
 				message_timer = 2.2
-	var exit_position := Vector2(EXIT_CELL) + Vector2(0.5, 0.5)
-	if shards_collected >= SHARD_CELLS.size() and player_position.distance_to(exit_position) < 0.56:
-		state = "won"
-		message = "The light is free"
-		message_timer = 99.0
+	var exit_position := Vector2(exit_cell) + Vector2(0.5, 0.5)
+	if shards_collected >= shard_cells.size() and player_position.distance_to(exit_position) < 0.56:
+		if level_index < LEVELS.size() - 1:
+			load_level(level_index + 1)
+		else:
+			state = "won"
+			message = "All depths are clear"
+			message_timer = 99.0
 
 func spawn_burst(position: Vector2, color: Color, count := 8) -> void:
 	effects.append({
@@ -324,7 +528,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		var keycode: int = event.physical_keycode if event.physical_keycode != 0 else event.keycode
 		if keycode == KEY_R:
-			reset_game()
+			if state == "won" and level_index == LEVELS.size() - 1:
+				reset_game()
+			else:
+				load_level(level_index)
 			get_viewport().set_input_as_handled()
 
 func iso_to_screen(world_position: Vector2) -> Vector2:
@@ -343,19 +550,19 @@ func floor_color(cell: Vector2i) -> Color:
 	var value := posmod(cell.x * 3 + cell.y * 5 + cell.x * cell.y, 5)
 	match value:
 		0:
-			return COLOR_SLATE
+			return slate_color
 		1:
-			return COLOR_SLATE_LIGHT
+			return slate_light_color
 		2:
-			return Color("303a54")
+			return floor_mist_color
 		3:
-			return Color("294654")
+			return floor_petrol_color
 		_:
-			return Color("40344f")
+			return floor_plum_color
 
 func _draw() -> void:
 	var viewport := get_viewport_rect().size
-	draw_rect(Rect2(Vector2.ZERO, viewport), COLOR_VOID, true)
+	draw_rect(Rect2(Vector2.ZERO, viewport), void_color, true)
 	draw_atmosphere(viewport)
 	draw_floors()
 	draw_front_boundary()
@@ -370,14 +577,14 @@ func draw_atmosphere(viewport: Vector2) -> void:
 		Vector2(1190, 270),
 		Vector2(640, 708),
 	])
-	draw_colored_polygon(cavern, COLOR_DEEP)
+	draw_colored_polygon(cavern, deep_color)
 	for index in range(9):
 		var start := Vector2(90 + index * 142, 36 + posmod(index * 83, 180))
-		draw_line(start, start + Vector2(86, 118), Color(0.16, 0.2, 0.3, 0.16), 1.0)
+		draw_line(start, start + Vector2(86, 118), Color(accent_color, 0.08), 1.0)
 	for index in range(34):
 		var dust := Vector2(fposmod(index * 193.0 + 31.0, viewport.x), fposmod(index * 271.0 + 19.0, viewport.y))
 		var pulse := 0.18 + sin(elapsed * 1.4 + index) * 0.08
-		draw_circle(dust, 1.0 + float(index % 3) * 0.35, Color(COLOR_CYAN, pulse))
+		draw_circle(dust, 1.0 + float(index % 3) * 0.35, Color(safe_color, pulse))
 
 func tile_diamond(center: Vector2) -> PackedVector2Array:
 	return PackedVector2Array([
@@ -405,15 +612,15 @@ func draw_floors() -> void:
 			diamond[3],
 			diamond[2],
 		]), base.darkened(0.12))
-		draw_polyline(diamond, Color(COLOR_INK, 0.78), 1.0, true)
+		draw_polyline(diamond, Color(ink_color, 0.78), 1.0, true)
 
 func draw_depth_sorted() -> void:
 	var drawables: Array[Dictionary] = []
-	for y in range(MAP.size()):
-		var row: String = MAP[y]
+	for y in range(map_rows.size()):
+		var row: String = map_rows[y]
 		for x in range(row.length()):
 			var cell := Vector2i(x, y)
-			var front_boundary := y == MAP.size() - 1 or x == row.length() - 1
+			var front_boundary := y == map_rows.size() - 1 or x == row.length() - 1
 			if not walkable.has(cell) and not front_boundary:
 				drawables.append({
 					"depth": iso_to_screen(Vector2(cell) + Vector2(0.5, 0.5)).y,
@@ -428,7 +635,7 @@ func draw_depth_sorted() -> void:
 				"shard": shard,
 			})
 	drawables.append({
-		"depth": iso_to_screen(Vector2(EXIT_CELL) + Vector2(0.5, 0.5)).y,
+		"depth": iso_to_screen(Vector2(exit_cell) + Vector2(0.5, 0.5)).y,
 		"kind": "gate",
 	})
 	drawables.append({
@@ -460,11 +667,11 @@ func draw_depth_sorted() -> void:
 				draw_enemy(enemy_index)
 
 func draw_front_boundary() -> void:
-	var bottom_row := MAP.size() - 1
-	for x in range(MAP[bottom_row].length()):
+	var bottom_row := map_rows.size() - 1
+	for x in range(map_rows[bottom_row].length()):
 		draw_wall(Vector2i(x, bottom_row), 16.0)
 	for y in range(bottom_row):
-		draw_wall(Vector2i(MAP[y].length() - 1, y), 16.0)
+		draw_wall(Vector2i(map_rows[y].length() - 1, y), 16.0)
 
 func draw_wall(cell: Vector2i, height := WALL_HEIGHT) -> void:
 	var floor_center := iso_to_screen(Vector2(cell) + Vector2(0.5, 0.5))
@@ -482,9 +689,9 @@ func draw_wall(cell: Vector2i, height := WALL_HEIGHT) -> void:
 		top[3] + Vector2(0, height),
 		top[2] + Vector2(0, height),
 	])
-	var top_color := COLOR_INK_SOFT if posmod(cell.x + cell.y, 2) == 0 else Color("202840")
-	draw_colored_polygon(right_face, COLOR_INK.darkened(0.16))
-	draw_colored_polygon(left_face, COLOR_INK)
+	var top_color := ink_soft_color if posmod(cell.x + cell.y, 2) == 0 else wall_alt_color
+	draw_colored_polygon(right_face, ink_color.darkened(0.16))
+	draw_colored_polygon(left_face, ink_color)
 	draw_colored_polygon(top, top_color)
 	draw_colored_polygon(PackedVector2Array([
 		top_center,
@@ -496,9 +703,9 @@ func draw_wall(cell: Vector2i, height := WALL_HEIGHT) -> void:
 	draw_line(left_face[0], left_face[3], Color("0a0d18"), 1.0)
 
 func draw_gate() -> void:
-	var position := iso_to_screen(Vector2(EXIT_CELL) + Vector2(0.5, 0.5))
-	var open := shards_collected >= SHARD_CELLS.size()
-	var color := COLOR_CYAN if open else Color("6b5268")
+	var position := iso_to_screen(Vector2(exit_cell) + Vector2(0.5, 0.5))
+	var open := shards_collected >= shard_cells.size()
+	var color := safe_color if open else gate_color
 	var pulse := 0.5 + sin(elapsed * 3.0) * 0.5
 	draw_colored_polygon(PackedVector2Array([
 		position + Vector2(-38, 4),
@@ -524,21 +731,21 @@ func draw_gate() -> void:
 		position + Vector2(32, -58),
 		position + Vector2(0, -40),
 	]), color)
-	draw_circle(position + Vector2(0, -58), 4.0 + pulse * 2.0, COLOR_PAPER)
+	draw_circle(position + Vector2(0, -58), 4.0 + pulse * 2.0, paper_color)
 	if not open:
 		for offset in range(3):
-			draw_line(position + Vector2(-15 + offset * 15, -58), position + Vector2(-15 + offset * 15, -12), Color(COLOR_OXBLOOD, 0.55), 3.0)
+			draw_line(position + Vector2(-15 + offset * 15, -58), position + Vector2(-15 + offset * 15, -12), Color(danger_color, 0.55), 3.0)
 
 func draw_shard(shard: Dictionary) -> void:
 	var position := iso_to_screen(shard["position"])
 	var bob := sin(elapsed * 3.0 + float(shard["phase"])) * 5.0
 	var center := position + Vector2(0, -24 + bob)
 	draw_shadow(position, 22.0, 0.28)
-	draw_crystal(center, 15.0, COLOR_CYAN)
+	draw_crystal(center, 15.0, safe_color)
 	for index in range(3):
 		var angle := elapsed * 1.8 + float(shard["phase"]) + index * TAU / 3.0
 		var orbit := center + Vector2(cos(angle), sin(angle) * 0.42) * 25.0
-		draw_circle(orbit, 1.8, Color(COLOR_PAPER, 0.8))
+		draw_circle(orbit, 1.8, Color(paper_color, 0.8))
 
 func draw_player() -> void:
 	var position := iso_to_screen(player_position)
@@ -552,13 +759,13 @@ func draw_player() -> void:
 	if invulnerability > 0.0 and int(elapsed * 18.0) % 2 == 0:
 		tint = Color(1.0, 0.72, 0.76, 0.46)
 	if face == "nw" and sword_texture:
-		draw_player_texture(sword_texture, position, Color(COLOR_AMBER, tint.a))
+		draw_player_texture(sword_texture, position, Color(accent_color, tint.a))
 	if body_texture:
 		draw_player_texture(body_texture, position, tint)
 	else:
-		draw_crystal(position + Vector2(0, -36), 26.0, COLOR_AMETHYST)
+		draw_crystal(position + Vector2(0, -36), 26.0, fallback_color)
 	if face != "nw" and sword_texture:
-		draw_player_texture(sword_texture, position, Color(COLOR_AMBER, tint.a))
+		draw_player_texture(sword_texture, position, Color(accent_color, tint.a))
 
 func draw_player_texture(texture: Texture2D, position: Vector2, tint: Color) -> void:
 	var scale := 2.0
@@ -572,8 +779,19 @@ func draw_enemy(index: int) -> void:
 	var enemy := enemies[index]
 	var position := iso_to_screen(enemy["position"])
 	var bob := sin(elapsed * 5.0 + float(enemy["phase"])) * 3.0
+	match String(enemy["kind"]):
+		"mireling":
+			draw_mireling(enemy, position, bob)
+		"forge_golem":
+			draw_forge_golem(enemy, position, bob)
+		"astral_sentry":
+			draw_astral_sentry(enemy, position, bob)
+		_:
+			draw_shardling(enemy, position, bob)
+
+func draw_shardling(enemy: Dictionary, position: Vector2, bob: float) -> void:
 	var body_center := position + Vector2(0, -28 + bob)
-	var color := COLOR_OXBLOOD if float(enemy["hit_flash"]) <= 0.0 else COLOR_PAPER
+	var color := paper_color if float(enemy["hit_flash"]) > 0.0 else enemy_color
 	draw_shadow(position, 21.0, 0.32)
 	draw_crystal(body_center, 23.0, color)
 	draw_colored_polygon(PackedVector2Array([
@@ -586,10 +804,82 @@ func draw_enemy(index: int) -> void:
 		body_center + Vector2(12, -28),
 		body_center + Vector2(5, -17),
 	]), color.lightened(0.12))
-	draw_circle(body_center + Vector2(-7, -4), 2.4, COLOR_AMBER)
-	draw_circle(body_center + Vector2(7, -4), 2.4, COLOR_AMBER)
+	draw_circle(body_center + Vector2(-7, -4), 2.4, enemy_accent_color)
+	draw_circle(body_center + Vector2(7, -4), 2.4, enemy_accent_color)
 	if int(enemy["health"]) == 1:
-		draw_crystal(position + Vector2(0, -65), 6.0, COLOR_AMBER)
+		draw_crystal(position + Vector2(0, -65), 6.0, enemy_accent_color)
+
+func draw_mireling(enemy: Dictionary, position: Vector2, bob: float) -> void:
+	var body_center := position + Vector2(0, -25 + bob)
+	var color := paper_color if float(enemy["hit_flash"]) > 0.0 else enemy_color
+	draw_shadow(position, 22.0, 0.34)
+	draw_crystal(body_center, 22.0, color)
+	draw_colored_polygon(PackedVector2Array([
+		body_center + Vector2(-21, -5),
+		body_center + Vector2(-10, -29),
+		body_center + Vector2(-3, -14),
+	]), enemy_accent_color)
+	draw_colored_polygon(PackedVector2Array([
+		body_center + Vector2(21, -5),
+		body_center + Vector2(10, -29),
+		body_center + Vector2(3, -14),
+	]), enemy_accent_color)
+	for index in range(3):
+		var angle := elapsed * 1.6 + float(index) * TAU / 3.0 + float(enemy["phase"])
+		var bubble := body_center + Vector2(cos(angle) * 22.0, sin(angle) * 11.0 - 15.0)
+		draw_circle(bubble, 3.0 + float(index % 2), Color(safe_color, 0.72))
+	draw_circle(body_center + Vector2(-6, -3), 2.2, paper_color)
+	draw_circle(body_center + Vector2(6, -3), 2.2, paper_color)
+
+func draw_forge_golem(enemy: Dictionary, position: Vector2, bob: float) -> void:
+	var body_center := position + Vector2(0, -27 + bob)
+	var color := paper_color if float(enemy["hit_flash"]) > 0.0 else enemy_color
+	draw_shadow(position, 25.0, 0.38)
+	draw_colored_polygon(PackedVector2Array([
+		body_center + Vector2(-20, -22),
+		body_center + Vector2(20, -22),
+		body_center + Vector2(24, 17),
+		body_center + Vector2(0, 25),
+		body_center + Vector2(-24, 17),
+	]), color.darkened(0.12))
+	draw_colored_polygon(PackedVector2Array([
+		body_center + Vector2(-13, -15),
+		body_center + Vector2(13, -15),
+		body_center + Vector2(16, 11),
+		body_center + Vector2(0, 18),
+		body_center + Vector2(-16, 11),
+	]), color.lightened(0.08))
+	draw_colored_polygon(PackedVector2Array([
+		body_center + Vector2(0, -10),
+		body_center + Vector2(9, 0),
+		body_center + Vector2(0, 10),
+		body_center + Vector2(-9, 0),
+	]), enemy_accent_color)
+	draw_line(body_center + Vector2(-18, -25), body_center + Vector2(-25, -39), color, 4.0)
+	draw_line(body_center + Vector2(18, -25), body_center + Vector2(25, -39), color, 4.0)
+	draw_circle(body_center + Vector2(-7, -2), 2.4, paper_color)
+	draw_circle(body_center + Vector2(7, -2), 2.4, paper_color)
+
+func draw_astral_sentry(enemy: Dictionary, position: Vector2, bob: float) -> void:
+	var body_center := position + Vector2(0, -29 + bob)
+	var color := paper_color if float(enemy["hit_flash"]) > 0.0 else enemy_color
+	draw_shadow(position, 22.0, 0.32)
+	draw_colored_polygon(PackedVector2Array([
+		body_center + Vector2(0, -28),
+		body_center + Vector2(9, -8),
+		body_center + Vector2(25, 0),
+		body_center + Vector2(9, 8),
+		body_center + Vector2(0, 28),
+		body_center + Vector2(-9, 8),
+		body_center + Vector2(-25, 0),
+		body_center + Vector2(-9, -8),
+	]), color)
+	draw_crystal(body_center, 11.0, enemy_accent_color)
+	draw_arc(body_center, 28.0, elapsed * 0.8, elapsed * 0.8 + PI * 1.4, 24, Color(safe_color, 0.78), 2.0, true)
+	draw_circle(body_center + Vector2(-5, -2), 2.0, paper_color)
+	draw_circle(body_center + Vector2(5, -2), 2.0, paper_color)
+	if int(enemy["health"]) == 1:
+		draw_crystal(position + Vector2(0, -70), 6.0, enemy_accent_color)
 
 func draw_shadow(position: Vector2, radius: float, alpha: float) -> void:
 	draw_colored_polygon(PackedVector2Array([
@@ -636,35 +926,33 @@ func draw_effects() -> void:
 				draw_line(from, to, color, 2.5)
 
 func draw_hud(viewport: Vector2) -> void:
-	draw_plaque(Rect2(30, 24, 330, 76), COLOR_AMBER)
-	draw_string(ui_font, Vector2(50, 57), "FACETED DEPTHS", HORIZONTAL_ALIGNMENT_LEFT, -1, 30, COLOR_PAPER)
-	var objective := "Find the light shards"
-	if shards_collected >= SHARD_CELLS.size():
-		objective = "Reach the northern seal"
-	draw_string(ui_font, Vector2(51, 83), objective, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, COLOR_AMBER)
+	draw_plaque(Rect2(30, 24, 330, 76), accent_color)
+	draw_string(ui_font, Vector2(50, 57), "FACETED DEPTHS", HORIZONTAL_ALIGNMENT_LEFT, -1, 30, paper_color)
+	var level_text := "DEPTH %02d / %02d  •  %s" % [level_index + 1, LEVELS.size(), level_name]
+	draw_string(ui_font, Vector2(51, 83), level_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, accent_color)
 	var shard_rect := Rect2(viewport.x - 244, 24, 214, 76)
-	draw_plaque(shard_rect, COLOR_CYAN)
-	draw_string(ui_font, shard_rect.position + Vector2(18, 26), "LIGHT SHARDS", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, COLOR_MUTED)
-	for index in range(SHARD_CELLS.size()):
+	draw_plaque(shard_rect, safe_color)
+	draw_string(ui_font, shard_rect.position + Vector2(18, 26), "LIGHT SHARDS", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, muted_color)
+	for index in range(shard_cells.size()):
 		var center := shard_rect.position + Vector2(32 + index * 58, 52)
 		if index < shards_collected:
-			draw_hud_diamond(center, 13.0, COLOR_CYAN)
+			draw_hud_diamond(center, 13.0, safe_color)
 		else:
-			draw_hud_diamond(center, 13.0, Color(COLOR_MUTED, 0.25))
+			draw_hud_diamond(center, 13.0, Color(muted_color, 0.25))
 	var health_rect := Rect2(30, viewport.y - 82, 280, 54)
-	draw_plaque(health_rect, COLOR_OXBLOOD)
-	draw_string(ui_font, health_rect.position + Vector2(18, 24), "VITALITY", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, COLOR_MUTED)
+	draw_plaque(health_rect, danger_color)
+	draw_string(ui_font, health_rect.position + Vector2(18, 24), "VITALITY", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, muted_color)
 	for index in range(MAX_HEALTH):
 		var center := health_rect.position + Vector2(112 + index * 29, 27)
 		if index < health:
-			draw_hud_diamond(center, 10.0, COLOR_OXBLOOD.lightened(0.08))
+			draw_hud_diamond(center, 10.0, danger_color.lightened(0.08))
 		else:
-			draw_hud_diamond(center, 10.0, Color(COLOR_MUTED, 0.2))
+			draw_hud_diamond(center, 10.0, Color(muted_color, 0.2))
 	var controls := "WASD / ARROWS  MOVE     SPACE  STRIKE     R  RESTART"
 	var controls_size := ui_font.get_string_size(controls, HORIZONTAL_ALIGNMENT_LEFT, -1, 13)
 	var controls_rect := Rect2(viewport.x - controls_size.x - 68, viewport.y - 54, controls_size.x + 38, 30)
-	draw_plaque(controls_rect, COLOR_SLATE_LIGHT)
-	draw_string(ui_font, controls_rect.position + Vector2(19, 20), controls, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, COLOR_MUTED)
+	draw_plaque(controls_rect, slate_light_color)
+	draw_string(ui_font, controls_rect.position + Vector2(19, 20), controls, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted_color)
 	if message_timer > 0.0:
 		draw_message(viewport)
 	if state != "playing":
@@ -672,7 +960,7 @@ func draw_hud(viewport: Vector2) -> void:
 
 func draw_plaque(rect: Rect2, accent: Color) -> void:
 	draw_rect(Rect2(rect.position + Vector2(5, 7), rect.size), Color(0.0, 0.0, 0.0, 0.25), true)
-	draw_rect(rect, Color(0.025, 0.04, 0.075, 0.94), true)
+	draw_rect(rect, Color(void_color, 0.94), true)
 	draw_line(rect.position, rect.position + Vector2(rect.size.x, 0), accent, 2.0)
 	draw_line(rect.position + Vector2(0, rect.size.y), rect.position + rect.size, Color(accent, 0.28), 1.0)
 
@@ -691,16 +979,16 @@ func draw_message(viewport: Vector2) -> void:
 	var text_size := ui_font.get_string_size(message, HORIZONTAL_ALIGNMENT_LEFT, -1, 18)
 	var rect := Rect2((viewport.x - text_size.x) * 0.5 - 22, 108, text_size.x + 44, 42)
 	draw_rect(Rect2(rect.position + Vector2(3, 5), rect.size), Color(0, 0, 0, 0.22 * alpha), true)
-	draw_rect(rect, Color(0.035, 0.055, 0.095, 0.92 * alpha), true)
-	draw_line(rect.position, rect.position + Vector2(rect.size.x, 0), Color(COLOR_CYAN, alpha), 2.0)
-	draw_string(ui_font, rect.position + Vector2(22, 28), message, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(COLOR_PAPER, alpha))
+	draw_rect(rect, Color(void_color, 0.92 * alpha), true)
+	draw_line(rect.position, rect.position + Vector2(rect.size.x, 0), Color(safe_color, alpha), 2.0)
+	draw_string(ui_font, rect.position + Vector2(22, 28), message, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(paper_color, alpha))
 
 func draw_state_overlay(viewport: Vector2) -> void:
-	draw_rect(Rect2(Vector2.ZERO, viewport), Color(0.015, 0.02, 0.045, 0.82), true)
+	draw_rect(Rect2(Vector2.ZERO, viewport), Color(void_color, 0.82), true)
 	var center := Vector2(viewport.x * 0.5, viewport.y * 0.48)
-	var accent := COLOR_CYAN if state == "won" else COLOR_OXBLOOD
+	var accent := safe_color if state == "won" else danger_color
 	draw_crystal(center + Vector2(0, -76), 42.0 + sin(elapsed * 2.2) * 2.0, accent)
-	var title := "THE GATE OPENS" if state == "won" else "THE LIGHT FADES"
-	var subtitle := "The shards return to the deep" if state == "won" else "Press R to descend again"
-	draw_string(ui_font, Vector2(0, center.y + 18), title, HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 42, COLOR_PAPER)
+	var title := "THE DEPTHS ARE CLEARED" if state == "won" else "THE LIGHT FADES"
+	var subtitle := "All four depths are clear" if state == "won" else "Press R to restart this depth"
+	draw_string(ui_font, Vector2(0, center.y + 18), title, HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 42, paper_color)
 	draw_string(ui_font, Vector2(0, center.y + 58), subtitle, HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 17, Color(accent, 0.9))

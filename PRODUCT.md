@@ -12,7 +12,7 @@ Players who want a short, immediately playable isometric dungeon crawl using key
 
 ## Product Purpose
 
-Deliver a compact Godot dungeon-crawl slice where a player explores, fights monsters, collects loot, and reaches an exit. Success means a satisfying run can be completed in a few minutes.
+Deliver a compact four-level Godot dungeon-crawl run where a player explores distinct isometric depths, fights themed monsters, collects light shards, and reaches each gate. Success means a satisfying run can be completed in a few minutes.
 
 ## Positioning
 
@@ -24,7 +24,7 @@ Godot 4.7, desktop-first with a web-export-friendly implementation, rendered at 
 
 ## Capabilities and Constraints
 
-The first slice includes exploration, monsters, combat, loot, and an exit. Desktop and web targets must share the same gameplay code. Only supplied assets with known redistribution terms may ship; other packs remain blocked pending license confirmation.
+The run includes four deterministic levels, each with its own connected map, palette, enemy behavior, three shards, and exit. Desktop and web targets must share the same gameplay code. Only supplied assets with known redistribution terms may ship; other packs remain blocked pending license confirmation.
 
 ## Evidence on Hand
 
@@ -34,6 +34,6 @@ The repository contains an initial Godot scene, the Phantom Camera addon, and RP
 
 - Start playing in seconds.
 - Keep movement and combat immediately legible.
-- Make progress visible within every run.
+- Make progress visible within every run and between levels.
 - Use supplied art only within its confirmed license.
 - Keep desktop and web behavior aligned.

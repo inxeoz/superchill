@@ -106,6 +106,8 @@ Faceted Depths presents the dungeon as a living cut gemstone. Deep ink caverns f
 
 The room stays quiet and readable while semantic light supplies the drama: amber marks action, cyan marks safety and progress, and oxblood marks danger. The derived NE/SE/SW/NW player frames remain the one deliberate sprite exception; their path, source pack, and license are provenance, not palette, shape, or typography tokens.
 
+The run moves through four authored depths: Faceted Depths, Mossglass Cistern, Ember Vault, and Starfall Reliquary. Each depth changes the mineral palette, map topology, enemy silhouette, movement speed, and health profile while preserving the same shard-and-gate objective.
+
 **Key Characteristics:**
 - A 2:1 isometric world with 96 × 48 px floor diamonds and split light/shadow facets.
 - Whole-pixel phosphor movement quantized to 2 px screen-space steps.
@@ -114,7 +116,7 @@ The room stays quiet and readable while semantic light supplies the drama: amber
 
 ## Colors
 
-The palette is predominantly blue-black mineral neutrals with three functional jewel signals and restrained teal, amethyst, and plum mineral variation.
+The palette is predominantly blue-black mineral neutrals with three functional jewel signals and restrained teal, amethyst, and plum mineral variation. Later depths rotate the same signal roles into green, ember, and astral palettes rather than introducing new semantic colors.
 
 ### Primary
 - **Action Amber:** Player weapon accents, strike arcs, the objective plaque rule, and active attack feedback.
@@ -155,7 +157,7 @@ Godot's nearest texture filter preserves hard pixel edges across raster sprites 
 
 The design baseline is a 1280 × 720 landscape canvas using Godot's `canvas_items` stretch with `keep` aspect. The fixed edge grammar remains anchored to the live viewport.
 
-The 12 × 9 room projects from `(640, 248)`. The warrior starts at cell `(1, 7)` in the lower-left field, while the gate occupies `(10, 1)` on the right. Tiles are 96 px wide by 48 px high; walls rise 58 px and the visible front boundary is reduced to 16 px.
+The 12 × 9 rooms project from `(640, 248)`. Each depth keeps the warrior near the lower-left field and the gate on the right, while its authored wall layout changes the route. Tiles are 96 px wide by 48 px high; walls rise 58 px and the visible front boundary is reduced to 16 px. The top-left plaque identifies `DEPTH 01 / 04` through `DEPTH 04 / 04`.
 
 HUD plaques stay at the perimeter: 30 px from the left, right, and bottom edges, and 24 px from the top. Transient messages center at `y = 108`; the keyboard plaque sizes to its content plus 38 px. This leaves the central room unobstructed.
 
@@ -196,7 +198,7 @@ All visible components are custom-drawn Godot geometry in `faceted_depths.gd`; t
 - **Floor:** One base diamond plus a 7% lightened right triangle, 12% darkened left triangle, and ink seam.
 - **Wall:** 58 px ink faces, alternating top mineral, one lightened top facet, and hard near-black seams; front boundary uses a 16 px wall height.
 - **Shard:** A bobbing cyan crystal, flattened contact shadow, and three orbiting paper motes.
-- **Enemy:** A smaller oxblood crystal with two ear facets, amber eyes, contact shadow, and an amber crown crystal at one remaining health point; hit flash turns the body paper-white.
+- **Enemies:** Four procedural silhouettes share the same depth ordering and contact-shadow grammar: shardling crystals, mireling bubbles, forge golems, and astral sentinels. Hit flash turns each body paper-white.
 - **Gate:** A symmetrical faceted seal, paper core, and translucent halo. It is sealed mauve with three oxblood bars, then becomes cyan after all three shards.
 - **HUD marker:** The same vertically stretched diamond as a crystal, reduced to 10–13 px radii for shard and vitality state.
 - **Effects:** Amber slash arcs last 0.20 s; cyan or oxblood radial line bursts last 0.34 s; damage adds decaying whole-pixel screen shake.
@@ -206,6 +208,7 @@ All visible components are custom-drawn Godot geometry in `faceted_depths.gd`; t
 
 ### Do:
 - **Do** preserve the strict amber-action, cyan-safety, and oxblood-danger mapping in every state.
+- **Do** keep each depth's palette and enemy silhouette paired with its authored map while preserving the shared semantic color roles.
 - **Do** quantize projected world positions to 2 px screen-space increments.
 - **Do** sort walls, shards, gate, player, and enemies by projected screen Y before drawing effects and HUD.
 - **Do** keep HUD plaques at 24–30 px viewport margins and transient messages top-centered.
