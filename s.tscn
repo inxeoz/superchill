@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://b74a5q0dmn8lw"]
 
-[ext_resource type="Script" path="res://cube.gd" id="1_cube"]
+[ext_resource type="Script" uid="uid://blr70eajir2mq" path="res://faceted_depths.gd" id="1_cube"]
 
 [node name="FacetedDepths" type="Node2D" unique_id=732116644]
 script = ExtResource("1_cube")

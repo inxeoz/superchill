@@ -791,6 +791,11 @@ var message_timer := 0.0
 var elapsed := 0.0
 var walk_animation := 0.0
 var attack_cooldown := 0.0
+var player_running := false
+var player_jumping := false
+var player_jump_time := 0.0
+const JUMP_DURATION := 0.5
+const JUMP_HEIGHT := 18.0
 var invulnerability := 0.0
 var shake_strength := 0.0
 var screen_shake := Vector2.ZERO
@@ -974,6 +979,10 @@ func _process(delta: float) -> void:
 	message_timer = maxf(0.0, message_timer - delta)
 	attack_cooldown = maxf(0.0, attack_cooldown - delta)
 	invulnerability = maxf(0.0, invulnerability - delta)
+	if player_jumping:
+		player_jump_time += delta
+		if player_jump_time >= JUMP_DURATION:
+			player_jumping = false
 	if shake_strength > 0.0:
 		shake_strength = maxf(0.0, shake_strength - delta * 2.2)
 		screen_shake = Vector2(random.randf_range(-1.0, 1.0), random.randf_range(-1.0, 1.0)) * shake_strength * 7.0
@@ -1008,11 +1017,17 @@ func update_player(delta: float) -> void:
 				message = "The river is too deep — find a life jacket"
 				message_timer = 2.4
 		player_facing = world_direction
-		walk_animation += delta * 8.0
+		player_running = Input.is_physical_key_pressed(KEY_SHIFT)
+		walk_animation += delta * (13.0 if player_running else 8.0)
 		var current_cell := cell_at(player_position)
 		if current_cell != last_player_cell:
 			last_player_cell = current_cell
 			rebuild_flow()
+	else:
+		player_running = false
+	if level_kind == "surface" and state == "playing" and not player_jumping and Input.is_physical_key_pressed(KEY_SPACE):
+		player_jumping = true
+		player_jump_time = 0.0
 	if level_kind != "surface" and Input.is_physical_key_pressed(KEY_SPACE):
 		attack()
 
@@ -2301,24 +2316,44 @@ func draw_shard(shard: Dictionary) -> void:
 		draw_circle(orbit, 1.8, Color(paper_color, 0.8))
 
 func draw_player() -> void:
-	var position := iso_to_screen(player_position)
-	draw_shadow(position, 24.0, 0.38)
+	var base := iso_to_screen(player_position)
+	draw_shadow(base, 24.0, 0.38)
 	var face := player_face_name()
 	var tint := Color.WHITE
 	if invulnerability > 0.0 and int(elapsed * 18.0) % 2 == 0:
 		tint = Color(1.0, 0.72, 0.76, 0.46)
+	# screen-space forward for lean (matches the facing grid)
+	var fwd := Vector2(1, -1).normalized()
+	match face:
+		"se":
+			fwd = Vector2(1, 1).normalized()
+		"sw":
+			fwd = Vector2(-1, 1).normalized()
+		"nw":
+			fwd = Vector2(-1, -1).normalized()
+	var spring := base
+	# jump: raise the sprite over a parabola, keep shadow grounded
+	if player_jumping:
+		spring.y -= absf(sin(player_jump_time / JUMP_DURATION * PI)) * JUMP_HEIGHT
+	# run: lean forward slightly
+	if player_running and not player_jumping:
+		spring += fwd * 2.0
+	# hurt: quick recoil shake
+	if invulnerability > 0.0:
+		spring.x += sin(invulnerability * 40.0) * 3.0
 	if face == "nw":
-		draw_pixel_sprite("sword_" + face, position, tint)
-	draw_pixel_sprite(face, position, tint)
+		draw_pixel_sprite("sword_" + face, spring, tint)
+	draw_pixel_sprite(face, spring, tint)
 	if face != "nw":
-		draw_pixel_sprite("sword_" + face, position, tint)
+		draw_pixel_sprite("sword_" + face, spring, tint)
 	if has_life_jacket:
-		draw_life_jacket(position)
+		draw_life_jacket(spring)
 
-# Map the original 64x64 pixel sprite (assets/player/isometric) to script:
-# PLAYER_PIXELS holds a shared palette and the content grid of every walk
-# frame + sword facing. Each opaque pixel is drawn as a 2x2 rect at the same
-# screen origin the sprite used, so the character keeps the original art.
+# The original 64x64 pixel sprite (assets/player/isometric) is baked into
+# PLAYER_PIXELS (shared palette + content grids of every walk frame + sword
+# facing). Each opaque pixel draws as a 2x2 rect at the sprite's original
+# screen anchor; transparent-boundary pixels get a soft feather so the
+# silhouette reads smooth/HD instead of hard-stepped.
 func draw_pixel_sprite(art_key: String, position: Vector2, tint: Color) -> void:
 	var palette: Array = PLAYER_PIXELS["palette"]
 	var frame: Dictionary
@@ -2333,6 +2368,7 @@ func draw_pixel_sprite(art_key: String, position: Vector2, tint: Color) -> void:
 	var rows: Array = frame["rows"]
 	var origin := Vector2(position.x - 64.0, position.y - 90.0)
 	var scale := 2.0
+	var aa := 0.6
 	for r in range(rows.size()):
 		var row: String = String(rows[r])
 		for c in range(row.length()):
@@ -2342,9 +2378,29 @@ func draw_pixel_sprite(art_key: String, position: Vector2, tint: Color) -> void:
 			var ci := PLAYER_PIXELS_CHARS.find(ch)
 			if ci < 0:
 				continue
-			var base: Color = palette[ci]
-			var draw_color := Color(base.r * tint.r, base.g * tint.g, base.b * tint.b, base.a * tint.a)
-			draw_rect(Rect2(origin + Vector2((ox + c) * scale, (oy + r) * scale), Vector2(scale, scale)), draw_color)
+			var base_c: Color = palette[ci]
+			var draw_color := Color(base_c.r * tint.r, base_c.g * tint.g, base_c.b * tint.b, base_c.a * tint.a)
+			var px := origin + Vector2((ox + c) * scale, (oy + r) * scale)
+			draw_rect(Rect2(px, Vector2(scale, scale)), draw_color)
+			# feather steps into transparent neighbours
+			if not pixel_opaque(rows, c, r - 1):
+				draw_rect(Rect2(px.x, px.y - aa, scale, aa), Color(draw_color, draw_color.a * 0.4))
+			if not pixel_opaque(rows, c, r + 1):
+				draw_rect(Rect2(px.x, px.y + scale, scale, aa), Color(draw_color, draw_color.a * 0.4))
+			if not pixel_opaque(rows, c - 1, r):
+				draw_rect(Rect2(px.x - aa, px.y, aa, scale), Color(draw_color, draw_color.a * 0.4))
+			if not pixel_opaque(rows, c + 1, r):
+				draw_rect(Rect2(px.x + scale, px.y, aa, scale), Color(draw_color, draw_color.a * 0.4))
+
+func pixel_opaque(rows: Array, c: int, r: int) -> bool:
+	if r < 0 or r >= rows.size():
+		return false
+	var row: String = String(rows[r])
+	if c < 0 or c >= row.length():
+		return false
+	var ch := row[c]
+	return ch != "." and PLAYER_PIXELS_CHARS.find(ch) >= 0
+
 
 func draw_life_jacket(position: Vector2) -> void:
 	for side: float in [-1.0, 1.0]:
@@ -2736,7 +2792,7 @@ func draw_hud(viewport: Vector2) -> void:
 			draw_hud_diamond(center, 10.0, danger_color.lightened(0.08))
 		else:
 			draw_hud_diamond(center, 10.0, Color(muted_color, 0.2))
-	var controls := "WASD MOVE  F SEARCH/PICK  B TABLE  G WEAR/DROP  DRAG PAN  WHEEL ZOOM  Q/E YAW  C RESET  L LEVELS  R RESTART" if level_kind == "surface" else "WASD MOVE  SPACE STRIKE  DRAG PAN  WHEEL ZOOM  Q/E YAW  C RESET  L LEVELS  R RESTART"
+	var controls := "WASD MOVE  SHIFT RUN  SPACE JUMP  F SEARCH/PICK  B TABLE  G WEAR/DROP  L LEVELS  R RESTART" if level_kind == "surface" else "WASD MOVE  SPACE STRIKE  DRAG PAN  WHEEL ZOOM  Q/E YAW  C RESET  L LEVELS  R RESTART"
 	var controls_size := ui_font.get_string_size(controls, HORIZONTAL_ALIGNMENT_LEFT, -1, 13)
 	var controls_rect := Rect2(viewport.x - controls_size.x - 68, viewport.y - 54, controls_size.x + 38, 30)
 	draw_plaque(controls_rect, slate_light_color)
