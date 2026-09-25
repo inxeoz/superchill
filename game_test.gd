@@ -156,7 +156,7 @@ func validate_wall_faces() -> bool:
 func validate_rotated_border() -> bool:
 	game.load_level(0)
 	var border: Dictionary = game.border_cells()
-	if border.size() != 62:
+	if border.size() != 128:
 		return false
 	var expected_walls := 0
 	for y in range(game.map_rows.size()):
@@ -184,7 +184,7 @@ func validate_rotated_border() -> bool:
 
 func validate_surface_level() -> bool:
 	game.load_level(0)
-	if game.level_index != 0 or game.level_kind != "surface" or game.map_rows.size() != 13:
+	if game.level_index != 0 or game.level_kind != "surface" or game.map_rows.size() != 26:
 		return false
 	if game.walkable.is_empty() or game.flow.size() != game.walkable.size():
 		return false
@@ -195,13 +195,13 @@ func validate_surface_level() -> bool:
 	if not game.enemies.is_empty() or not game.shards.is_empty() or not game.bottle_sources.is_empty():
 		return false
 	for row in game.map_rows:
-		if String(row).length() != 20:
+		if String(row).length() != 40:
 			return false
-	# River is four tiles wide: columns 9-12 are water, and the banks are land.
-	for y in range(1, 12):
-		if not game.water_cells.has(Vector2i(9, y)) or not game.water_cells.has(Vector2i(10, y)) or not game.water_cells.has(Vector2i(11, y)) or not game.water_cells.has(Vector2i(12, y)):
+	# River is four tiles wide: columns 19-22 are water, and the banks are land.
+	for y in range(1, 25):
+		if not game.water_cells.has(Vector2i(19, y)) or not game.water_cells.has(Vector2i(20, y)) or not game.water_cells.has(Vector2i(21, y)) or not game.water_cells.has(Vector2i(22, y)):
 			return false
-		if game.water_cells.has(Vector2i(8, y)) or game.water_cells.has(Vector2i(13, y)):
+		if game.water_cells.has(Vector2i(18, y)) or game.water_cells.has(Vector2i(23, y)):
 			return false
 	# Loose items: distinct, on reachable on-foot land, and collectible.
 	var seen_cells: Dictionary = {}
@@ -238,7 +238,7 @@ func validate_surface_level() -> bool:
 		if game.can_occupy(Vector2(tree_cell) + Vector2(0.5, 0.5), 0.22):
 			return false
 	# Water is impassable without the jacket.
-	var water_position := Vector2(9.5, 4.5)
+	var water_position := Vector2(20.5, 12.5)
 	if game.can_occupy(water_position, 0.22):
 		return false
 	# The right bank is reached once a jacket lets you cross.
@@ -259,7 +259,7 @@ func validate_surface_level() -> bool:
 			break
 	game.player_position = lone["position"]
 	game.pick_litter_kind("wood scrap")
-	if game.item_inventory.get("wood scrap", 0) != 1 or game.item_count != 1 or game.litter.size() != 20:
+	if game.item_inventory.get("wood scrap", 0) != 1 or game.item_count != 1 or game.litter.size() != 36:
 		return false
 	if game.total_collected_items() != 1:
 		return false
