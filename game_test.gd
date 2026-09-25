@@ -6,6 +6,9 @@ func _initialize() -> void:
 func run_test() -> void:
 	var game: Variant = load("res://faceted_depths.tscn").instantiate()
 	root.add_child(game as Node)
+	if load("res://assets/icon.svg") == null:
+		quit(1)
+		return
 	if game.walkable.is_empty():
 		quit(1)
 		return
