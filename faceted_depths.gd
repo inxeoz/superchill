@@ -271,7 +271,7 @@ const LEVELS := [
 		"shards": [],
 		"spawns": [],
 		"trees": [Vector2i(3, 6), Vector2i(5, 4), Vector2i(7, 5), Vector2i(11, 6), Vector2i(13, 5), Vector2i(4, 9), Vector2i(6, 8), Vector2i(8, 9), Vector2i(10, 8), Vector2i(12, 9), Vector2i(14, 6), Vector2i(2, 8), Vector2i(5, 11), Vector2i(9, 11), Vector2i(13, 9)],
-		"spirits": [],
+		"spirits": [{"cell": Vector2i(15, 5), "recipe": "fishing_catcher"}],
 		"start": Vector2i(2, 11),
 		"exit": Vector2i(10, 5),
 		"void": "08150f",
@@ -1156,7 +1156,7 @@ func load_level(index: int) -> void:
 
 func distribute_surface_items() -> void:
 	# Loose gear scattered on the reachable bank. Guarantees the craft recipes
-	# work: >= LIFE_JACKET_BOTTLES empty bottles plus the fishing-catcher parts.
+	# work: >= LIFE_JACKET_BOTTLES empty bottles plus the fishing-catcher bottle+rope.
 	var bag: Array = []
 	for i in range(20):
 		bag.append("empty bottle")
@@ -1492,8 +1492,8 @@ const RECIPES := [
 	{
 		"id": "fishing_catcher",
 		"name": "FISHING CATCHER",
-		"blurb": "Rope, wood, wrapper and spring for a river catch",
-		"needs": {"rope": 2, "wood scrap": 1, "plastic wrapper": 1, "coiled spring": 1},
+		"blurb": "An empty bottle and some rope for a river catch",
+		"needs": {"bottles": 1, "rope": 1},
 	},
 ]
 

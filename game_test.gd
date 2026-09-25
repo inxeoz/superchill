@@ -354,8 +354,11 @@ func validate_surface_level() -> bool:
 	if game.litter.size() == 0 or bottle_total < game.LIFE_JACKET_BOTTLES:
 		return false
 	# The fishing-catcher materials must all be present somewhere on the bank.
+	# "bottles" is the shared need key that maps to the empty-bottle sources.
 	for need_kind in game.recipe_needs(1):
-		if int(counts.get(String(need_kind), 0)) < int(game.recipe_needs(1)[need_kind]):
+		var need_key := String(need_kind)
+		var have_count := bottle_total if need_key == "bottles" else int(counts.get(need_key, 0))
+		if have_count < int(game.recipe_needs(1)[need_key]):
 			return false
 	# No item spawns on the player's start tile.
 	if seen_cells.has(game.start_cell):
@@ -529,12 +532,11 @@ func validate_surface_level() -> bool:
 	game.build_selected()
 	if not game.has_life_jacket or game.bottle_count != 0 or int(game.item_inventory.get("leaves", 0)) != 4:
 		return false
-	# Fishing catcher: selecting its material auto-picks the recipe and builds it.
+	# Fishing catcher: selecting its material auto-picks the recipe and builds it
+	# from one bottle and one rope.
 	game.load_level(0)
-	game.item_inventory["rope"] = 2
-	game.item_inventory["wood scrap"] = 1
-	game.item_inventory["plastic wrapper"] = 1
-	game.item_inventory["coiled spring"] = 1
+	game.bottle_count = 1
+	game.item_inventory["rope"] = 1
 	game.open_craft_table()
 	var cat_visible: Array = game.craft_visible_elements()
 	var rope_pos := -1
@@ -550,7 +552,7 @@ func validate_surface_level() -> bool:
 	game.build_selected()
 	if not game.has_fishing_catcher or game.state != "playing":
 		return false
-	if int(game.item_inventory.get("rope", 0)) != 0:
+	if int(game.item_inventory.get("rope", 0)) != 0 or game.bottle_count != 0:
 		return false
 
 	game.load_level(0)
@@ -598,6 +600,21 @@ func validate_jungle_level() -> bool:
 			return false
 		if game.can_occupy(Vector2(tree_cell) + Vector2(0.5, 0.5), 0.22):
 			return false
+	# One spirit grants the fishing-catcher recipe on reachable land.
+	var catcher_found := false
+	for spirit: Dictionary in game.spirits:
+		if String(spirit["recipe"]) != "fishing_catcher":
+			continue
+		catcher_found = true
+		var sc: Vector2i = game.cell_at(spirit["position"])
+		if not game.walkable.has(sc) or game.water_cells.has(sc) or game.solid_cells.has(sc):
+			return false
+		if sc == game.start_cell or sc == game.exit_cell:
+			return false
+		if not game.can_occupy(spirit["position"], 0.22):
+			return false
+	if not catcher_found:
+		return false
 	return true
 
 func validate_dungeon_level(index: int) -> bool:
