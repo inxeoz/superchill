@@ -28,6 +28,24 @@ func run_test() -> void:
 	if game.state != "playing" or game.level_index != 2:
 		quit(1)
 		return
+	game.reset_camera()
+	game.set_camera_offset(Vector2(999.0, 999.0))
+	if game.camera_offset != Vector2(420.0, 280.0):
+		quit(1)
+		return
+	game.reset_camera()
+	game.reset_camera()
+	var projected_before: Vector2 = game.iso_to_screen(Vector2(3.0, 4.0))
+	game.camera_zoom = 1.25
+	game.camera_angle = PI * 0.25
+	game.camera_offset = Vector2(100.0, -40.0)
+	if game.camera_zoom != 1.25 or game.camera_angle != PI * 0.25 or game.camera_offset != Vector2(100.0, -40.0):
+		quit(1)
+		return
+	if game.iso_to_screen(Vector2(3.0, 4.0)) == projected_before:
+		quit(1)
+		return
+	game.reset_camera()
 	for direction in ["ne", "se", "sw", "nw"]:
 		if not game.player_frames.has(direction) or game.player_frames[direction].size() != 4:
 			quit(1)

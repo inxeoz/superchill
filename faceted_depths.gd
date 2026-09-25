@@ -4,6 +4,7 @@ const TILE_WIDTH := 96.0
 const TILE_HEIGHT := 48.0
 const WALL_HEIGHT := 58.0
 const MAP_ORIGIN := Vector2(640.0, 248.0)
+const CAMERA_PIVOT := Vector2(640.0, 420.0)
 const PLAYER_SPEED := 3.8
 const ENEMY_SPEED := 1.45
 const ATTACK_COOLDOWN := 0.34
@@ -221,6 +222,13 @@ var level_name := "FACETED DEPTHS"
 var enemy_kind := "shardling"
 var enemy_health := 2
 var enemy_speed := ENEMY_SPEED
+var camera_offset := Vector2.ZERO
+var camera_zoom := 1.0
+var camera_angle := 0.0
+var camera_target := Vector2.ZERO
+var camera_dragging := false
+var camera_drag_origin := Vector2.ZERO
+var camera_drag_start := Vector2.ZERO
 
 func _ready() -> void:
 	random.seed = 260925
@@ -291,6 +299,11 @@ func load_level(index: int) -> void:
 	invulnerability = 0.0
 	shake_strength = 0.0
 	screen_shake = Vector2.ZERO
+	camera_offset = Vector2.ZERO
+	camera_zoom = 1.0
+	camera_angle = 0.0
+	camera_target = player_position
+	camera_dragging = false
 	last_player_cell = Vector2i(-999, -999)
 	shards.clear()
 	enemies.clear()
@@ -361,6 +374,7 @@ func _process(delta: float) -> void:
 		update_player(delta)
 		update_enemies(delta)
 		collect_shards()
+		camera_target = player_position
 	update_effects(delta)
 	queue_redraw()
 
@@ -541,7 +555,42 @@ func update_effects(delta: float) -> void:
 		if float(effect["age"]) >= float(effect["life"]):
 			effects.remove_at(index)
 
+func reset_camera() -> void:
+	camera_offset = Vector2.ZERO
+	camera_zoom = 1.0
+	camera_angle = 0.0
+	camera_target = player_position
+	camera_dragging = false
+
+func set_camera_offset(value: Vector2) -> void:
+	camera_offset = Vector2(clampf(value.x, -420.0, 420.0), clampf(value.y, -280.0, 280.0))
+
+func handle_camera_button(event: InputEventMouseButton) -> void:
+	if state != "playing":
+		return
+	if event.button_index == MOUSE_BUTTON_RIGHT or event.button_index == MOUSE_BUTTON_MIDDLE:
+		camera_dragging = event.pressed
+		camera_drag_origin = event.position
+		camera_drag_start = camera_offset
+	elif event.pressed and event.button_index == MOUSE_BUTTON_WHEEL_UP:
+		camera_zoom = clampf(camera_zoom + 0.08, 0.65, 1.35)
+	elif event.pressed and event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+		camera_zoom = clampf(camera_zoom - 0.08, 0.65, 1.35)
+
+func handle_camera_motion(event: InputEventMouseMotion) -> void:
+	if state == "playing" and camera_dragging:
+		set_camera_offset(camera_drag_start + event.position - camera_drag_origin)
+
 func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton:
+		handle_camera_button(event)
+		get_viewport().set_input_as_handled()
+		return
+	if event is InputEventMouseMotion:
+		handle_camera_motion(event)
+		if camera_dragging:
+			get_viewport().set_input_as_handled()
+		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		var keycode: int = event.physical_keycode if event.physical_keycode != 0 else event.keycode
 		if state == "level_select":
@@ -554,7 +603,13 @@ func _unhandled_input(event: InputEvent) -> void:
 			elif keycode == KEY_ESCAPE or keycode == KEY_L:
 				close_level_select()
 		else:
-			if keycode == KEY_L:
+			if keycode == KEY_Q:
+				camera_angle = clampf(camera_angle + deg_to_rad(15.0), -PI, PI)
+			elif keycode == KEY_E:
+				camera_angle = clampf(camera_angle - deg_to_rad(15.0), -PI, PI)
+			elif keycode == KEY_C:
+				reset_camera()
+			elif keycode == KEY_L:
 				open_level_select()
 			elif keycode == KEY_R:
 				if state == "won" and level_index == LEVELS.size() - 1:
@@ -564,16 +619,19 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 func iso_to_screen(world_position: Vector2) -> Vector2:
-	var projected := MAP_ORIGIN + Vector2(
-		(world_position.x - world_position.y) * TILE_WIDTH * 0.5,
-		(world_position.x + world_position.y) * TILE_HEIGHT * 0.5
-	) + screen_shake
+	var relative := world_position - camera_target
+	var rotated := relative.rotated(camera_angle)
+	var projected := Vector2(
+		(rotated.x - rotated.y) * TILE_WIDTH * 0.5,
+		(rotated.x + rotated.y) * TILE_HEIGHT * 0.5
+	)
 	return Vector2(round(projected.x * 0.5) * 2.0, round(projected.y * 0.5) * 2.0)
 
 func player_face_name() -> String:
-	if player_facing.x >= 0.0:
-		return "ne" if player_facing.y < 0.0 else "se"
-	return "nw" if player_facing.y < 0.0 else "sw"
+	var facing := player_facing.rotated(-camera_angle)
+	if facing.x >= 0.0:
+		return "ne" if facing.y < 0.0 else "se"
+	return "nw" if facing.y < 0.0 else "sw"
 
 func floor_color(cell: Vector2i) -> Color:
 	var value := posmod(cell.x * 3 + cell.y * 5 + cell.x * cell.y, 5)
@@ -593,10 +651,12 @@ func _draw() -> void:
 	var viewport := get_viewport_rect().size
 	draw_rect(Rect2(Vector2.ZERO, viewport), void_color, true)
 	draw_atmosphere(viewport)
+	draw_set_transform(CAMERA_PIVOT + camera_offset + screen_shake, 0.0, Vector2(camera_zoom, camera_zoom))
 	draw_floors()
 	draw_front_boundary()
 	draw_depth_sorted()
 	draw_effects()
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	draw_hud(viewport)
 
 func draw_atmosphere(viewport: Vector2) -> void:
@@ -615,20 +675,26 @@ func draw_atmosphere(viewport: Vector2) -> void:
 		var pulse := 0.18 + sin(elapsed * 1.4 + index) * 0.08
 		draw_circle(dust, 1.0 + float(index % 3) * 0.35, Color(safe_color, pulse))
 
-func tile_diamond(center: Vector2) -> PackedVector2Array:
-	return PackedVector2Array([
-		center + Vector2(0, -TILE_HEIGHT * 0.5),
-		center + Vector2(TILE_WIDTH * 0.5, 0),
-		center + Vector2(0, TILE_HEIGHT * 0.5),
-		center + Vector2(-TILE_WIDTH * 0.5, 0),
-		center + Vector2(0, -TILE_HEIGHT * 0.5),
-	])
+func tile_polygon(cell: Vector2i, height := 0.0) -> PackedVector2Array:
+	var center := Vector2(cell) + Vector2(0.5, 0.5)
+	var points := PackedVector2Array()
+	for corner: Vector2 in [
+		center + Vector2(-0.5, -0.5),
+		center + Vector2(0.5, -0.5),
+		center + Vector2(0.5, 0.5),
+		center + Vector2(-0.5, 0.5),
+	]:
+		var point := iso_to_screen(corner)
+		point.y -= height
+		points.append(point)
+	points.append(points[0])
+	return points
 
 func draw_floors() -> void:
 	for key in walkable:
 		var cell: Vector2i = key
 		var center := iso_to_screen(Vector2(cell) + Vector2(0.5, 0.5))
-		var diamond := tile_diamond(center)
+		var diamond := tile_polygon(cell)
 		var base := floor_color(cell)
 		draw_colored_polygon(diamond, base)
 		draw_colored_polygon(PackedVector2Array([
@@ -703,20 +769,21 @@ func draw_front_boundary() -> void:
 		draw_wall(Vector2i(map_rows[y].length() - 1, y), 16.0)
 
 func draw_wall(cell: Vector2i, height := WALL_HEIGHT) -> void:
-	var floor_center := iso_to_screen(Vector2(cell) + Vector2(0.5, 0.5))
-	var top_center := floor_center - Vector2(0, height)
-	var top := tile_diamond(top_center)
+	var floor := tile_polygon(cell)
+	var top := tile_polygon(cell, height)
+	var top_center := iso_to_screen(Vector2(cell) + Vector2(0.5, 0.5))
+	top_center.y -= height
 	var right_face := PackedVector2Array([
 		top[1],
 		top[2],
-		top[2] + Vector2(0, height),
-		top[1] + Vector2(0, height),
+		floor[2],
+		floor[1],
 	])
 	var left_face := PackedVector2Array([
 		top[2],
 		top[3],
-		top[3] + Vector2(0, height),
-		top[2] + Vector2(0, height),
+		floor[3],
+		floor[2],
 	])
 	var top_color := ink_soft_color if posmod(cell.x + cell.y, 2) == 0 else wall_alt_color
 	draw_colored_polygon(right_face, ink_color.darkened(0.16))
@@ -1016,7 +1083,7 @@ func draw_hud(viewport: Vector2) -> void:
 			draw_hud_diamond(center, 10.0, danger_color.lightened(0.08))
 		else:
 			draw_hud_diamond(center, 10.0, Color(muted_color, 0.2))
-	var controls := "WASD / ARROWS  MOVE     SPACE  STRIKE     L  LEVELS     R  RESTART"
+	var controls := "WASD MOVE  SPACE STRIKE  DRAG PAN  WHEEL ZOOM  Q/E YAW  C RESET  L LEVELS  R RESTART"
 	var controls_size := ui_font.get_string_size(controls, HORIZONTAL_ALIGNMENT_LEFT, -1, 13)
 	var controls_rect := Rect2(viewport.x - controls_size.x - 68, viewport.y - 54, controls_size.x + 38, 30)
 	draw_plaque(controls_rect, slate_light_color)

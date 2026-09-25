@@ -159,13 +159,13 @@ The design baseline is a 1280 × 720 landscape canvas using Godot's `canvas_item
 
 The 12 × 9 rooms project from `(640, 248)`. Each depth keeps the warrior near the lower-left field and the gate on the right, while its authored wall layout changes the route. Tiles are 96 px wide by 48 px high; walls rise 58 px and the visible front boundary is reduced to 16 px. The top-left plaque identifies `DEPTH 01 / 04` through `DEPTH 04 / 04`.
 
-HUD plaques stay at the perimeter: 30 px from the left, right, and bottom edges, and 24 px from the top. Transient messages center at `y = 108`; the keyboard plaque sizes to its content plus 38 px. This leaves the central room unobstructed.
+HUD plaques stay at the perimeter: 30 px from the left, right, and bottom edges, and 24 px from the top. Transient messages center at `y = 108`; the keyboard plaque sizes to its content plus 38 px. Camera pan, zoom, and yaw affect the world projection around the player; the HUD remains fixed. Yaw changes the ground-plane viewpoint, not a flat rotation of the finished map.
 
 ## Elevation & Depth
 
 This world uses tonal layering and painter ordering, not blurred interface shadows. Rendering proceeds as void, cavern atmosphere and dust, floor facets, low front boundary, depth-sorted walls and entities, transient effects, then HUD.
 
-Walls, shards, gate, player, and enemies share one list sorted by ascending projected screen Y. Lower objects therefore draw later and occlude upper objects; depth must not be assigned by entity type. Projected positions round to 2 px increments before drawing.
+Walls, shards, gate, player, and enemies share one list sorted by ascending projected screen Y. Lower objects therefore draw later and occlude upper objects; depth must not be assigned by entity type. Projected positions round to 2 px increments before drawing, then pass through the movable 2.5D camera transform.
 
 Contact shadows are flattened diamonds beneath shards, the player, and enemies. Plaques use a hard black rectangle offset by 5 × 7 px. There are no soft or diffuse shadow treatments.
 
@@ -214,6 +214,7 @@ All visible components are custom-drawn Godot geometry in `faceted_depths.gd`; t
 - **Do** keep each depth's palette and enemy silhouette paired with its authored map while preserving the shared semantic color roles.
 - **Do** quantize projected world positions to 2 px screen-space increments.
 - **Do** sort walls, shards, gate, player, and enemies by projected screen Y before drawing effects and HUD.
+- **Do** keep camera movement limited to the world layer and preserve a fixed, readable HUD.
 - **Do** keep HUD plaques at 24–30 px viewport margins and transient messages top-centered.
 - **Do** build room surfaces from split diamonds, straight seams, and hard offsets; reserve rounding for the app icon.
 
