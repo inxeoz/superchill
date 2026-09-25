@@ -1313,7 +1313,7 @@ func update_player(delta: float) -> void:
 			rebuild_flow()
 	else:
 		player_running = false
-	if level_kind == "surface" and state == "playing" and not player_jumping and Input.is_physical_key_pressed(KEY_SPACE):
+	if state == "playing" and not player_jumping and Input.is_physical_key_pressed(KEY_SPACE):
 		player_jumping = true
 		player_jump_time = 0.0
 		_sfx("jump")
