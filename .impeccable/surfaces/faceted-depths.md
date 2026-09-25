@@ -1,7 +1,7 @@
 ---
 version: 1
-slug: "s-tscn"
-primary_target: "s.tscn"
+slug: "faceted-depths"
+primary_target: "faceted_depths.tscn"
 related_targets: []
 ---
 

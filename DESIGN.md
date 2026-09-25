@@ -104,7 +104,7 @@ components:
 
 Faceted Depths presents the dungeon as a living cut gemstone. Deep ink caverns frame a low, jewel-toned isometric field whose floor planes, walls, crystals, gate, and HUD plaques are built from hard polygons rather than conventional interface chrome.
 
-The room stays quiet and readable while semantic light supplies the drama: amber marks action, cyan marks safety and progress, and oxblood marks danger. The supplied player raster remains the one deliberate sprite exception; its path and license are provenance, not palette, shape, or typography tokens.
+The room stays quiet and readable while semantic light supplies the drama: amber marks action, cyan marks safety and progress, and oxblood marks danger. The derived NE/SE/SW/NW player frames remain the one deliberate sprite exception; their path, source pack, and license are provenance, not palette, shape, or typography tokens.
 
 **Key Characteristics:**
 - A 2:1 isometric world with 96 × 48 px floor diamonds and split light/shadow facets.
@@ -153,7 +153,7 @@ Godot's nearest texture filter preserves hard pixel edges across raster sprites 
 
 ## Layout
 
-The design baseline is a 1280 × 720 landscape canvas using Godot's `canvas_items` stretch with `expand` aspect. No alternate breakpoint relayout is implemented; the fixed edge grammar remains anchored to the live viewport.
+The design baseline is a 1280 × 720 landscape canvas using Godot's `canvas_items` stretch with `keep` aspect. The fixed edge grammar remains anchored to the live viewport.
 
 The 12 × 9 room projects from `(640, 248)`. The warrior starts at cell `(1, 7)` in the lower-left field, while the gate occupies `(10, 1)` on the right. Tiles are 96 px wide by 48 px high; walls rise 58 px and the visible front boundary is reduced to 16 px.
 
@@ -179,7 +179,7 @@ Curves are reserved for tiny dust motes, crystal eyes, gate pulses, and attack a
 
 ## Components
 
-All visible components are custom-drawn Godot geometry in `cube.gd`; there is no widget library, HTML control layer, hover state, or browser-only navigation. The keyboard guide is a passive plaque, not an interactive control.
+All visible components are custom-drawn Godot geometry in `faceted_depths.gd`; there is no widget library, HTML control layer, hover state, or browser-only navigation. The keyboard guide is a passive plaque, not an interactive control.
 
 ### Plaques
 - **Shared grammar:** `rgba(6.375, 10.2, 19.125, 0.94)` fill, square corners, 5 × 7 px black shadow at 25% alpha, 2 px semantic top rule, and 1 px bottom rule at 28% accent alpha.

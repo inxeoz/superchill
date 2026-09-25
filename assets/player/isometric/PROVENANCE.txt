@@ -1,0 +1,5 @@
+Source: game-res/tiny-questers-warrior-bodyonly-free
+Source license: game-res/tiny-questers-warrior-bodyonly-free/LICENSE.txt
+Transform: nearest-neighbor affine shear of the supplied walk and sword frames
+Directions: ne from right, se from down, sw from left, nw from up
+The source license permits use in personal and commercial games; these files are derived game assets, not a standalone asset pack.

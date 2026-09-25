@@ -11,7 +11,7 @@ const MAX_HEALTH := 5
 const START_CELL := Vector2i(1, 7)
 const EXIT_CELL := Vector2i(10, 1)
 const SHARD_CELLS := [Vector2i(2, 1), Vector2i(5, 4), Vector2i(9, 2)]
-const ENEMY_SPAWNS := [Vector2i(3, 6), Vector2i(4, 2), Vector2i(6, 4), Vector2i(8, 6), Vector2i(9, 3)]
+const ENEMY_SPAWNS := [Vector2i(3, 6), Vector2i(4, 2), Vector2i(6, 4), Vector2i(8, 6), Vector2i(10, 3)]
 const MAP := [
 	"############",
 	"#....#.....#",
@@ -46,8 +46,7 @@ var effects: Array[Dictionary] = []
 var player_frames: Dictionary = {}
 var sword_frames: Dictionary = {}
 var player_position := Vector2.ZERO
-var player_facing := Vector2.DOWN
-var screen_facing := Vector2.DOWN
+var player_facing := Vector2(1.0, 1.0).normalized()
 var health := MAX_HEALTH
 var shards_collected := 0
 var state := "playing"
@@ -71,22 +70,21 @@ func _ready() -> void:
 	reset_game()
 
 func load_player_assets() -> void:
-	var base_path := "res://game-res/tiny-questers-warrior-bodyonly-free/png/single/walk/"
-	var frame_counts := {"up": 4, "down": 4, "left": 4, "right": 4}
+	var base_path := "res://assets/player/isometric/"
+	var frame_counts := {"ne": 4, "se": 4, "sw": 4, "nw": 4}
 	for face in frame_counts:
 		var frames: Array[Texture2D] = []
 		for frame_index in range(int(frame_counts[face])):
 			var texture := load(base_path + face + "/" + face + str(frame_index + 1) + ".png") as Texture2D
 			frames.append(texture)
 		player_frames[face] = frames
-	for sword_index in range(1, 5):
-		sword_frames[sword_index] = load("res://game-res/tiny-questers-warrior-bodyonly-free/items/sword" + str(sword_index) + ".png") as Texture2D
+	for direction in ["ne", "se", "sw", "nw"]:
+		sword_frames[direction] = load(base_path + "sword_" + direction + ".png") as Texture2D
 
 func reset_game() -> void:
 	build_walkable()
 	player_position = Vector2(START_CELL) + Vector2(0.5, 0.5)
-	player_facing = Vector2.DOWN
-	screen_facing = Vector2.DOWN
+	player_facing = Vector2(1.0, 1.0).normalized()
 	health = MAX_HEALTH
 	shards_collected = 0
 	state = "playing"
@@ -109,16 +107,19 @@ func reset_game() -> void:
 			"taken": false,
 			"phase": index * 1.7,
 		})
+	rebuild_flow()
 	for index in range(ENEMY_SPAWNS.size()):
 		var cell: Vector2i = ENEMY_SPAWNS[index]
+		if not walkable.has(cell) or not flow.has(cell):
+			continue
+		var enemy_index := enemies.size()
 		enemies.append({
 			"position": Vector2(cell) + Vector2(0.5, 0.5),
 			"health": 2,
 			"hit_flash": 0.0,
-			"attack_cooldown": 0.45 + index * 0.08,
-			"phase": index * 0.9,
+			"attack_cooldown": 0.45 + enemy_index * 0.08,
+			"phase": enemy_index * 0.9,
 		})
-	rebuild_flow()
 
 func build_walkable() -> void:
 	walkable.clear()
@@ -158,7 +159,6 @@ func update_player(delta: float) -> void:
 		).normalized()
 		player_position = move_with_collisions(player_position, world_direction * PLAYER_SPEED * delta, 0.22)
 		player_facing = world_direction
-		screen_facing = input_direction
 		walk_animation += delta * 8.0
 		var current_cell := cell_at(player_position)
 		if current_cell != last_player_cell:
@@ -335,9 +335,9 @@ func iso_to_screen(world_position: Vector2) -> Vector2:
 	return Vector2(round(projected.x * 0.5) * 2.0, round(projected.y * 0.5) * 2.0)
 
 func player_face_name() -> String:
-	if absf(screen_facing.x) >= absf(screen_facing.y):
-		return "right" if screen_facing.x >= 0.0 else "left"
-	return "down" if screen_facing.y >= 0.0 else "up"
+	if player_facing.x >= 0.0:
+		return "ne" if player_facing.y < 0.0 else "se"
+	return "nw" if player_facing.y < 0.0 else "sw"
 
 func floor_color(cell: Vector2i) -> Color:
 	var value := posmod(cell.x * 3 + cell.y * 5 + cell.x * cell.y, 5)
@@ -547,29 +547,18 @@ func draw_player() -> void:
 	var frames: Array = player_frames.get(face, [])
 	var frame_index := int(walk_animation) % maxi(1, frames.size())
 	var body_texture: Texture2D = frames[frame_index] if not frames.is_empty() else null
-	var sword_texture: Texture2D = sword_frames.get(sword_index_for_face(face), null)
+	var sword_texture: Texture2D = sword_frames.get(face, null)
 	var tint := Color.WHITE
 	if invulnerability > 0.0 and int(elapsed * 18.0) % 2 == 0:
 		tint = Color(1.0, 0.72, 0.76, 0.46)
-	if face == "up" and sword_texture:
+	if face == "nw" and sword_texture:
 		draw_player_texture(sword_texture, position, Color(COLOR_AMBER, tint.a))
 	if body_texture:
 		draw_player_texture(body_texture, position, tint)
 	else:
 		draw_crystal(position + Vector2(0, -36), 26.0, COLOR_AMETHYST)
-	if face != "up" and sword_texture:
+	if face != "nw" and sword_texture:
 		draw_player_texture(sword_texture, position, Color(COLOR_AMBER, tint.a))
-
-func sword_index_for_face(face: String) -> int:
-	match face:
-		"up":
-			return 1
-		"left":
-			return 2
-		"down":
-			return 3
-		_:
-			return 4
 
 func draw_player_texture(texture: Texture2D, position: Vector2, tint: Color) -> void:
 	var scale := 2.0
