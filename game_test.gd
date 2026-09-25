@@ -34,7 +34,6 @@ func run_test() -> void:
 		quit(1)
 		return
 	game.reset_camera()
-	game.reset_camera()
 	var projected_before: Vector2 = game.iso_to_screen(Vector2(3.0, 4.0))
 	game.camera_zoom = 1.25
 	game.camera_angle = PI * 0.25
