@@ -1207,6 +1207,14 @@ const ITEM_LABELS := {
 	"coiled spring": "COILED SPRINGS",
 	"empty bottle": "EMPTY BOTTLES",
 }
+const ITEM_SINGULAR_LABELS := {
+	"leaves": "LEAF",
+	"plastic wrapper": "PLASTIC WRAPPER",
+	"rope": "ROPE",
+	"wood scrap": "WOOD SCRAP",
+	"coiled spring": "COILED SPRING",
+	"empty bottle": "EMPTY BOTTLE",
+}
 # Buildable recipes. "bottles" groups every empty bottle source; other keys
 # are item kinds (ITEM_ORDER). Add a new entry here to offer another build.
 const RECIPES := [
@@ -1319,6 +1327,7 @@ func open_craft_table() -> void:
 	recipe_index = 0
 	state = "crafting"
 	message_timer = 0.0
+	refresh_recipe_index()
 
 func close_craft_table() -> void:
 	if state != "crafting":
@@ -1345,18 +1354,14 @@ func craft_element_available(element_index: int) -> int:
 		return 0
 	var inventory := craft_element_inventory(element_index)
 	var kind := craft_element_kind(element_index)
-	var reserved := 0
-	for slot in craft_slots:
-		if slot == element_index:
-			reserved += 1
-	return maxi(0, int(inventory.get(kind, 0)) - reserved)
+	return int(inventory.get(kind, 0))
 
 func craft_visible_elements() -> Array:
 	var visible: Array = []
 	for element_index in range(craft_element_count()):
 		var inventory := craft_element_inventory(element_index)
 		var kind := craft_element_kind(element_index)
-		if int(inventory.get(kind, 0)) > 0 or craft_slots.has(element_index):
+		if int(inventory.get(kind, 0)) > 0:
 			visible.append(element_index)
 	return visible
 
@@ -1368,15 +1373,6 @@ func total_collected_items() -> int:
 
 func recipe_needs(index: int) -> Dictionary:
 	return RECIPES[clampi(index, 0, RECIPES.size() - 1)]["needs"]
-
-func recipe_slot_targets(index: int) -> Array:
-	var targets: Array = []
-	var needs := recipe_needs(index)
-	for kind in needs:
-		var count: int = needs[kind]
-		for i in range(count):
-			targets.append(String(kind))
-	return targets
 
 func recipe_built(index: int) -> bool:
 	match String(RECIPES[clampi(index, 0, RECIPES.size() - 1)]["id"]):
@@ -1390,97 +1386,109 @@ func recipe_built(index: int) -> bool:
 func craft_build_kind(element_index: int) -> String:
 	return craft_element_kind(element_index)
 
-func recipe_kind_label(kind: String) -> String:
-	if kind == "bottles":
-		return "EMPTY BOTTLES"
-	return String(ITEM_LABELS.get(kind, "ITEMS"))
 
-func switch_recipe(step: int) -> void:
-	craft_slots.clear()
-	recipe_index = posmod(recipe_index + step, RECIPES.size())
-	clamp_craft_selection()
-	message_timer = 0.0
+func material_label(kind: String, count: int) -> String:
+	if kind == "bottles":
+		return "EMPTY BOTTLE" if count <= 1 else "EMPTY BOTTLES"
+	if count <= 1:
+		return String(ITEM_SINGULAR_LABELS.get(kind, ITEM_LABELS.get(kind, kind)))
+	return String(ITEM_LABELS.get(kind, kind))
+
+func selected_craft_element() -> int:
+	var visible := craft_visible_elements()
+	if visible.is_empty():
+		return -1
+	return visible[clampi(craft_selected, 0, visible.size() - 1)]
+
+func selected_build_kind() -> String:
+	var element_index := selected_craft_element()
+	if element_index < 0:
+		return ""
+	return craft_build_kind(element_index)
+
+func recipe_for_build_kind(kind: String) -> int:
+	for index in range(RECIPES.size()):
+		if RECIPES[index]["needs"].has(kind):
+			return index
+	return -1
+
+func recipes_for_item(kind: String) -> Array:
+	var found: Array = []
+	for index in range(RECIPES.size()):
+		if RECIPES[index]["needs"].has(kind):
+			found.append(index)
+	return found
+
+
+func refresh_recipe_index() -> void:
+	recipe_index = recipe_for_build_kind(selected_build_kind())
+
+func inventory_count(kind: String) -> int:
+	if kind == "bottles":
+		return bottle_count
+	return int(item_inventory.get(kind, 0))
+
+func consume_inventory(kind: String, count: int) -> void:
+	if kind == "bottles":
+		bottle_count = maxi(0, bottle_count - count)
+	else:
+		item_inventory[kind] = maxi(0, int(item_inventory.get(kind, 0)) - count)
 
 func clamp_craft_selection() -> void:
 	craft_selected = clampi(craft_selected, 0, maxi(0, craft_visible_elements().size() - 1))
 
-func add_craft_element() -> void:
+func missing_recipe_counts(index: int) -> Dictionary:
+	var missing: Dictionary = {}
+	var needs := recipe_needs(index)
+	for kind in needs:
+		var have := inventory_count(String(kind))
+		var need: int = needs[String(kind)]
+		if have < need:
+			missing[String(kind)] = need - have
+	return missing
+
+func missing_counts_label(missing: Dictionary) -> String:
+	if missing.is_empty():
+		return ""
+	var out := ""
+	for kind in missing:
+		if out != "":
+			out += ", "
+		var have_missing: int = int(missing[String(kind)])
+		out += str(have_missing) + " more " + material_label(String(kind), have_missing)
+	return out
+
+func build_selected() -> void:
 	if state != "crafting":
 		return
-	if recipe_built(recipe_index):
-		message = String(RECIPES[recipe_index]["name"]) + " is already built"
-		message_timer = 2.0
-		return
-	var targets := recipe_slot_targets(recipe_index)
-	var visible := craft_visible_elements()
-	if visible.is_empty():
-		message = "Nothing collected yet — search garbage with F"
-		message_timer = 2.0
-		return
-	var element_index: int = visible[clampi(craft_selected, 0, visible.size() - 1)]
-	var build_kind := craft_build_kind(element_index)
-	var need_count := 0
-	for kind in targets:
-		if kind == build_kind:
-			need_count += 1
-	if need_count == 0:
-		message = "This item is not used to build " + String(RECIPES[recipe_index]["name"])
-		message_timer = 2.0
-		return
-	var added_count := 0
-	for slot in craft_slots:
-		if craft_build_kind(slot) == build_kind:
-			added_count += 1
-	if added_count >= need_count:
-		message = "No more room for " + recipe_kind_label(build_kind)
-		message_timer = 2.0
-		return
-	if craft_element_available(element_index) <= 0:
-		message = "No more " + recipe_kind_label(build_kind) + " in your stash"
-		message_timer = 2.0
-		return
-	craft_slots.append(element_index)
-	message_timer = 0.0
-
-func remove_last_craft_element() -> void:
-	if state != "crafting" or craft_slots.is_empty():
-		return
-	craft_slots.pop_back()
-	clamp_craft_selection()
-	message_timer = 0.0
-
-func combine_craft_elements() -> void:
-	if state != "crafting":
+	refresh_recipe_index()
+	if recipe_index < 0:
+		message = "This material isn't used in a known recipe"
+		message_timer = 2.4
 		return
 	if recipe_built(recipe_index):
-		close_craft_table()
-		message = String(RECIPES[recipe_index]["name"]) + " is already built"
-		message_timer = 2.0
+		message = "Already built"
+		message_timer = 2.4
 		return
-	var targets := recipe_slot_targets(recipe_index)
-	if craft_slots.size() < targets.size():
-		message = "Can't create — " + str(targets.size() - craft_slots.size()) + " more items required"
-		message_timer = 2.0
+	var missing := missing_recipe_counts(recipe_index)
+	if not missing.is_empty():
+		message = "We need " + missing_counts_label(missing)
+		message_timer = 2.8
 		return
-	for slot in craft_slots:
-		var inventory := craft_element_inventory(slot)
-		var kind := craft_element_kind(slot)
-		if kind == "bottles":
-			bottle_count = maxi(0, bottle_count - 1)
-		else:
-			inventory[kind] = maxi(0, int(inventory.get(kind, 0)) - 1)
+	var needs := recipe_needs(recipe_index)
+	for kind in needs:
+		consume_inventory(String(kind), int(needs[String(kind)]))
 	match String(RECIPES[recipe_index]["id"]):
 		"life_jacket":
 			has_life_jacket = true
 			life_jacket_on_ground = false
-			message = "Life jacket woven — the river is passable"
+			message = "Woven — the river is passable"
 		"fishing_catcher":
 			has_fishing_catcher = true
-			message = "Fishing catcher crafted — take it to the river"
+			message = "Crafted — ready at the river"
 		_:
 			message = "Crafted!"
-	craft_slots.clear()
-	state = "playing"
+	close_craft_table()
 	message_timer = 3.0
 	spawn_burst(player_position, safe_color, 18)
 	add_shake(0.32)
@@ -1491,7 +1499,7 @@ func drop_life_jacket() -> void:
 	has_life_jacket = false
 	life_jacket_on_ground = true
 	life_jacket_position = player_position
-	message = "Life jacket dropped — press G nearby to pick it up"
+	message = "Dropped — press G nearby to pick it up"
 	message_timer = 2.8
 	spawn_burst(life_jacket_position, accent_color, 10)
 	add_shake(0.16)
@@ -1507,7 +1515,7 @@ func pick_up_life_jacket() -> bool:
 	life_jacket_on_ground = false
 	if state == "crafting":
 		close_craft_table()
-	message = "Life jacket equipped"
+	message = "Equipped"
 	message_timer = 2.0
 	spawn_burst(player_position, safe_color, 12)
 	add_shake(0.18)
@@ -1612,22 +1620,18 @@ func _unhandled_input(event: InputEvent) -> void:
 				close_pickup_select()
 		elif state == "crafting":
 			var craft_visible_count := craft_visible_elements().size()
-			if keycode == KEY_TAB:
-				switch_recipe(-1 if event.shift_pressed else 1)
-			elif keycode == KEY_UP or keycode == KEY_W:
+			if keycode == KEY_UP or keycode == KEY_W:
 				if craft_visible_count > 0:
 					craft_selected = posmod(craft_selected - 1, craft_visible_count)
+					refresh_recipe_index()
 			elif keycode == KEY_DOWN or keycode == KEY_S:
 				if craft_visible_count > 0:
 					craft_selected = posmod(craft_selected + 1, craft_visible_count)
-			elif keycode == KEY_SPACE:
-				add_craft_element()
-			elif keycode == KEY_ENTER or keycode == KEY_KP_ENTER:
-				combine_craft_elements()
+					refresh_recipe_index()
+			elif keycode == KEY_SPACE or keycode == KEY_ENTER or keycode == KEY_KP_ENTER:
+				build_selected()
 			elif keycode == KEY_E and life_jacket_on_ground:
 				pick_up_life_jacket()
-			elif keycode == KEY_X or keycode == KEY_BACKSPACE or keycode == KEY_DELETE:
-				remove_last_craft_element()
 			elif keycode == KEY_B or keycode == KEY_ESCAPE:
 				close_craft_table()
 		else:
@@ -2785,27 +2789,13 @@ func draw_craft_table(viewport: Vector2) -> void:
 	draw_line(panel.position, panel.position + Vector2(panel.size.x, 0), accent_color, 2.0)
 	draw_line(panel.position + Vector2(0, panel.size.y), panel.position + panel.size, Color(accent_color, 0.35), 1.0)
 	draw_string(ui_font, Vector2(0, 100), "CRAFTING TABLE", HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 34, paper_color)
-	draw_string(ui_font, Vector2(0, 132), "COLLECT MATERIALS  •  CHOOSE WHAT TO BUILD", HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 14, muted_color)
+	draw_string(ui_font, Vector2(0, 132), "PICK AN ITEM TO SEE WHAT YOU CAN MAKE FROM IT", HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 14, muted_color)
 	draw_line(Vector2(270, 158), Vector2(1010, 158), Color(slate_light_color, 0.45), 1.0)
-	# ---- recipe selector ----
-	draw_string(ui_font, Vector2(278, 180), "BUILD OPTIONS", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted_color)
-	for recipe_i in range(RECIPES.size()):
-		var selected_recipe := recipe_i == recipe_index
-		var chip := Rect2(278 + recipe_i * 232, 192, 224, 30)
-		var chip_color := accent_color if selected_recipe else safe_color
-		draw_rect(Rect2(chip.position + Vector2(3, 4), chip.size), Color(0.0, 0.0, 0.0, 0.24), true)
-		draw_rect(chip, Color(ink_color, 0.96) if not selected_recipe else Color(void_color, 0.98), true)
-		draw_line(chip.position, chip.position + Vector2(chip.size.x, 0), chip_color if selected_recipe else Color(muted_color, 0.3), 2.0 if selected_recipe else 1.0)
-		draw_string(ui_font, chip.position + Vector2(12, 20), String(RECIPES[recipe_i]["name"]), HORIZONTAL_ALIGNMENT_LEFT, -1, 13, paper_color if selected_recipe else muted_color)
-		if recipe_built(recipe_i):
-			draw_string(ui_font, chip.position + Vector2(0, 20), "BUILT", HORIZONTAL_ALIGNMENT_RIGHT, chip.size.x - 12, 11, safe_color)
-	draw_line(Vector2(270, 234), Vector2(1010, 234), Color(slate_light_color, 0.45), 1.0)
-	# ---- material palette ----
-	draw_string(ui_font, Vector2(278, 254), "ELEMENT SOURCES", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted_color)
+	draw_string(ui_font, Vector2(278, 180), "ITEMS YOU COLLECTED", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted_color)
 	var visible_elements := craft_visible_elements()
 	if visible_elements.is_empty():
 		draw_string(ui_font, Vector2(278, 300), "NOTHING COLLECTED YET", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, paper_color)
-		draw_string(ui_font, Vector2(278, 326), "SEARCH GARBAGE WITH F TO FIND ITEMS", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted_color)
+		draw_string(ui_font, Vector2(278, 326), "SEARCH ITEMS WITH F TO FIND MATERIALS", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted_color)
 	else:
 		for row_index in range(visible_elements.size()):
 			var element_index: int = visible_elements[row_index]
@@ -2821,40 +2811,50 @@ func draw_craft_table(viewport: Vector2) -> void:
 				draw_item_icon(craft_element_kind(element_index), row.position + Vector2(22, 24))
 			draw_string(ui_font, row.position + Vector2(50, 26), craft_element_label(element_index), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, paper_color if selected else muted_color)
 			draw_string(ui_font, row.position + Vector2(0, 26), "×%02d" % craft_element_available(element_index), HORIZONTAL_ALIGNMENT_RIGHT, row.size.x - 12, 15, row_color)
-	# ---- build requirement for the selected recipe ----
-	var recipe_targets := recipe_slot_targets(recipe_index)
-	var recipe_done := craft_slots.size() >= recipe_targets.size()
-	draw_string(ui_font, Vector2(760, 254), "BUILDING: " + String(RECIPES[recipe_index]["name"]), HORIZONTAL_ALIGNMENT_LEFT, -1, 15, accent_color)
-	draw_string(ui_font, Vector2(760, 278), String(RECIPES[recipe_index]["blurb"]), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, muted_color)
-	var needs := recipe_needs(recipe_index)
-	var row_y := 304
-	for kind in needs:
-		var need_count: int = needs[kind]
-		var added := 0
-		for slot in craft_slots:
-			if craft_build_kind(slot) == String(kind):
-				added += 1
-		var ok := added >= need_count
-		var line_color := safe_color if ok else accent_color
-		draw_string(ui_font, Vector2(760, row_y), recipe_kind_label(String(kind)) + "   " + str(mini(added, need_count)) + " / " + str(need_count), HORIZONTAL_ALIGNMENT_LEFT, -1, 13, line_color)
-		row_y += 24
-	var status_color := safe_color if recipe_done else muted_color
-	if recipe_built(recipe_index):
-		var built_text := String(RECIPES[recipe_index]["name"]) + " — BUILT"
-		if recipe_index == 0 and has_life_jacket:
-			built_text = "LIFE JACKET — WEARING (G TO DROP)"
-		draw_string(ui_font, Vector2(760, row_y + 8), built_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, safe_color)
-	elif recipe_done:
-		draw_string(ui_font, Vector2(760, row_y + 8), "PRESS ENTER TO BUILD", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, paper_color)
+	# ---- what the selected item can make ----
+	var sel_kind := selected_build_kind()
+	var usages := recipes_for_item(sel_kind)
+	var px := 760.0
+	var py := 258.0
+	if usages.is_empty():
+		draw_string(ui_font, Vector2(px, py), "CAN'T MAKE ANYTHING FROM THIS", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted_color)
+		draw_string(ui_font, Vector2(px, py + 26), "THIS MATERIAL ISN'T USED IN A RECIPE", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, muted_color)
 	else:
-		draw_string(ui_font, Vector2(760, row_y + 8), "ADD MATERIALS", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted_color)
+		var n := usages.size()
+		var plural := "S" if n != 1 else ""
+		draw_string(ui_font, Vector2(px, py), "WE CAN MAKE " + str(n) + " THING" + plural + " OUT OF THIS", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, accent_color)
+		py += 30
+		# Stack every recipe's ingredients on their own line so nothing clips.
+		for idx in range(usages.size()):
+			var recipe_i: int = usages[idx]
+			var needs := recipe_needs(recipe_i)
+			var first := true
+			for kind in needs:
+				var need: int = needs[String(kind)]
+				var label := material_label(String(kind), need)
+				var line := (str(idx + 1) + ".  " if first else "      ") + label + " x" + str(need)
+				first = false
+				draw_string(ui_font, Vector2(px, py), line, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, paper_color)
+				py += 22
+		py += 8
+		var sel_recipe := recipe_for_build_kind(sel_kind)
+		var sel_missing := missing_recipe_counts(sel_recipe)
+		if recipe_built(sel_recipe):
+			var built_text := "BUILT"
+			if sel_recipe == 0 and has_life_jacket:
+				built_text = "WEARING (G TO DROP)"
+			draw_string(ui_font, Vector2(px, py), built_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, safe_color)
+		elif sel_missing.is_empty():
+			draw_string(ui_font, Vector2(px, py), "PRESS ENTER TO BUILD", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, paper_color)
+		else:
+			draw_string(ui_font, Vector2(px, py), "NEED " + missing_counts_label(sel_missing), HORIZONTAL_ALIGNMENT_LEFT, -1, 13, accent_color)
 	if message_timer > 0.0:
 		draw_string(ui_font, Vector2(0, 526), message, HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 15, paper_color)
 	var controls_rect := Rect2(300, 574, 680, 56)
 	draw_plaque(controls_rect, slate_light_color)
-	var controls_text := String("TAB CYCLE RECIPE     W/S ITEM     SPACE ADD     X REMOVE     ENTER BUILD     B/ESC CLOSE")
+	var controls_text := String("W/S SELECT ITEM     ENTER BUILD     B/ESC CLOSE")
 	if life_jacket_on_ground:
-		controls_text = "E EQUIP LIFE JACKET     " + controls_text
+		controls_text = "E EQUIP     " + controls_text
 	draw_string(ui_font, Vector2(0, 608), controls_text, HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 13, muted_color)
 
 func draw_hud(viewport: Vector2) -> void:

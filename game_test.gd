@@ -273,12 +273,11 @@ func validate_surface_level() -> bool:
 	if game.craft_element_kind(0) != "bottles" or game.craft_build_kind(0) != "bottles":
 		return false
 	game.craft_selected = 0
-	for slot_index in range(game.LIFE_JACKET_BOTTLES):
-		game.add_craft_element()
-	if game.craft_slots.size() != game.LIFE_JACKET_BOTTLES:
+	game.refresh_recipe_index()
+	if game.recipe_index != 0:
 		return false
-	game.combine_craft_elements()
-	if not game.has_life_jacket or game.state != "playing" or game.bottle_count != 0 or not game.craft_slots.is_empty() or game.life_jacket_on_ground:
+	game.build_selected()
+	if not game.has_life_jacket or game.state != "playing" or game.bottle_count != 0 or game.life_jacket_on_ground:
 		return false
 	if not game.can_occupy(water_position, 0.22):
 		return false
@@ -303,69 +302,61 @@ func validate_surface_level() -> bool:
 		return false
 	if not game.can_occupy(water_position, 0.22):
 		return false
-	# Jacket is bottles-only: debris cannot fill its slots and it needs all eight.
+	# Jacket is bottles-only: debris (leaves) is not in any recipe, so it cannot help
+	# build; building fails until eight bottles are present.
 	game.load_level(0)
 	game.item_inventory["leaves"] = 4
 	game.bottle_count = 4
 	game.open_craft_table()
-	for slot_index in range(4):
-		game.craft_selected = 0
-		game.add_craft_element()
-	if game.craft_slots.size() != 4:
+	var debris_visible: Array = game.craft_visible_elements()
+	if debris_visible.size() != 2 or debris_visible[0] != 0 or debris_visible[1] != 1:
 		return false
+	game.craft_selected = 0
+	game.refresh_recipe_index()
+	if game.recipe_index != 0:
+		return false
+	game.build_selected()
+	if game.has_life_jacket or game.state != "crafting" or game.bottle_count != 4:
+		return false
+	# leaves map to no recipe -> cannot build from them
 	game.craft_selected = 1
-	game.add_craft_element()
-	if game.craft_slots.size() != 4:
+	game.refresh_recipe_index()
+	if game.recipe_index != -1:
 		return false
-	game.combine_craft_elements()
-	if game.has_life_jacket or game.state != "crafting" or game.craft_slots.size() != 4:
+	game.build_selected()
+	if game.has_life_jacket or game.state != "crafting" or int(game.item_inventory.get("leaves", 0)) != 4:
 		return false
-	game.craft_slots.clear()
+	# now give enough bottles and the jacket builds, consuming only bottles
 	game.bottle_count = game.LIFE_JACKET_BOTTLES
-	for slot_index in range(game.LIFE_JACKET_BOTTLES):
-		game.craft_selected = 0
-		game.add_craft_element()
-	if game.craft_slots.size() != game.LIFE_JACKET_BOTTLES:
-		return false
-	game.combine_craft_elements()
+	game.craft_selected = 0
+	game.refresh_recipe_index()
+	game.build_selected()
 	if not game.has_life_jacket or game.bottle_count != 0 or int(game.item_inventory.get("leaves", 0)) != 4:
 		return false
-	# Fishing catcher recipe: Tab to it, add its materials, build.
+	# Fishing catcher: selecting its material auto-picks the recipe and builds it.
 	game.load_level(0)
 	game.item_inventory["rope"] = 2
 	game.item_inventory["wood scrap"] = 1
 	game.item_inventory["plastic wrapper"] = 1
 	game.item_inventory["coiled spring"] = 1
 	game.open_craft_table()
-	game.switch_recipe(1)
-	if game.recipe_index != 1:
-		return false
-	# Tab cycles: switching again from the last recipe wraps back to the first.
-	game.switch_recipe(1)
-	if game.recipe_index != 0:
-		return false
-	game.switch_recipe(1)
-	if game.recipe_index != 1:
-		return false
 	var cat_visible: Array = game.craft_visible_elements()
-	for need_kind in ["rope", "wood scrap", "plastic wrapper", "coiled spring"]:
-		var pos := -1
-		for i in range(cat_visible.size()):
-			if game.craft_element_kind(cat_visible[i]) == need_kind:
-				pos = i
-		if pos < 0:
-			return false
-		game.craft_selected = pos
-		var need_count: int = game.recipe_needs(1)[need_kind]
-		for add_i in range(need_count):
-			game.add_craft_element()
-	if game.craft_slots.size() != 5:
+	var rope_pos := -1
+	for i in range(cat_visible.size()):
+		if game.craft_element_kind(cat_visible[i]) == "rope":
+			rope_pos = i
+	if rope_pos < 0:
 		return false
-	game.combine_craft_elements()
+	game.craft_selected = rope_pos
+	game.refresh_recipe_index()
+	if game.recipe_index != 1:
+		return false
+	game.build_selected()
 	if not game.has_fishing_catcher or game.state != "playing":
 		return false
 	if int(game.item_inventory.get("rope", 0)) != 0:
 		return false
+
 	game.load_level(0)
 	if game.has_life_jacket:
 		return false
