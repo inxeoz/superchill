@@ -32,6 +32,7 @@ const CAMERA_ZOOM_MIN := 0.55
 const CAMERA_ZOOM_MAX := 3.2
 const CAMERA_ZOOM_STEP := 0.1
 const CAMERA_FOLLOW_RATE := 2.4
+const CAMERA_ROTATE_RATE := deg_to_rad(120.0)
 const LEVELS := [
 	{
 		"name": "RIVER RUN",
@@ -1279,6 +1280,10 @@ func _process(delta: float) -> void:
 			update_enemies(delta)
 			collect_shards()
 		update_camera(delta)
+		if Input.is_physical_key_pressed(KEY_Q):
+			camera_angle = wrapf(camera_angle + CAMERA_ROTATE_RATE * delta, -PI, PI)
+		elif Input.is_physical_key_pressed(KEY_E):
+			camera_angle = wrapf(camera_angle - CAMERA_ROTATE_RATE * delta, -PI, PI)
 	update_effects(delta)
 	queue_redraw()
 
@@ -2144,10 +2149,6 @@ func _unhandled_input(event: InputEvent) -> void:
 				handle_gear_key()
 			elif keycode == KEY_ENTER or keycode == KEY_KP_ENTER:
 				attack()
-			elif keycode == KEY_Q:
-				camera_angle = clampf(camera_angle + deg_to_rad(15.0), -PI, PI)
-			elif keycode == KEY_E:
-				camera_angle = clampf(camera_angle - deg_to_rad(15.0), -PI, PI)
 			elif keycode == KEY_C:
 				reset_camera()
 			elif keycode == KEY_P and state == "playing":
