@@ -12,6 +12,22 @@ func run_test() -> void:
 	if load("res://assets/icon.svg") == null:
 		quit(1)
 		return
+	if game.state != "level_select":
+		quit(1)
+		return
+	game.move_level_selection(1)
+	if game.selected_level != 1:
+		quit(1)
+		return
+	game.move_level_selection(3)
+	if game.selected_level != 0:
+		quit(1)
+		return
+	game.selected_level = 2
+	game.confirm_level_selection()
+	if game.state != "playing" or game.level_index != 2:
+		quit(1)
+		return
 	for direction in ["ne", "se", "sw", "nw"]:
 		if not game.player_frames.has(direction) or game.player_frames[direction].size() != 4:
 			quit(1)

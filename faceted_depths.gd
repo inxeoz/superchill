@@ -216,6 +216,7 @@ var enemy_spawns: Array = []
 var start_cell := Vector2i.ZERO
 var exit_cell := Vector2i.ZERO
 var level_index := 0
+var selected_level := 0
 var level_name := "FACETED DEPTHS"
 var enemy_kind := "shardling"
 var enemy_health := 2
@@ -227,6 +228,7 @@ func _ready() -> void:
 	ui_font.font_names = PackedStringArray(["DejaVu Sans", "sans-serif"])
 	load_player_assets()
 	reset_game()
+	open_level_select()
 
 func load_player_assets() -> void:
 	var base_path := "res://assets/player/isometric/"
@@ -244,8 +246,23 @@ func reset_game() -> void:
 	level_index = 0
 	load_level(level_index)
 
+func open_level_select() -> void:
+	selected_level = level_index
+	state = "level_select"
+	message_timer = 0.0
+
+func move_level_selection(step: int) -> void:
+	selected_level = posmod(selected_level + step, LEVELS.size())
+
+func confirm_level_selection() -> void:
+	load_level(selected_level)
+
+func close_level_select() -> void:
+	state = "playing"
+
 func load_level(index: int) -> void:
 	level_index = clampi(index, 0, LEVELS.size() - 1)
+	selected_level = level_index
 	var level: Dictionary = LEVELS[level_index]
 	level_name = String(level["name"])
 	var rows: Array = level["map"]
@@ -527,12 +544,24 @@ func update_effects(delta: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		var keycode: int = event.physical_keycode if event.physical_keycode != 0 else event.keycode
-		if keycode == KEY_R:
-			if state == "won" and level_index == LEVELS.size() - 1:
-				reset_game()
-			else:
-				load_level(level_index)
-			get_viewport().set_input_as_handled()
+		if state == "level_select":
+			if keycode == KEY_UP or keycode == KEY_W:
+				move_level_selection(-1)
+			elif keycode == KEY_DOWN or keycode == KEY_S:
+				move_level_selection(1)
+			elif keycode == KEY_ENTER or keycode == KEY_KP_ENTER or keycode == KEY_SPACE:
+				confirm_level_selection()
+			elif keycode == KEY_ESCAPE or keycode == KEY_L:
+				close_level_select()
+		else:
+			if keycode == KEY_L:
+				open_level_select()
+			elif keycode == KEY_R:
+				if state == "won" and level_index == LEVELS.size() - 1:
+					reset_game()
+				else:
+					load_level(level_index)
+		get_viewport().set_input_as_handled()
 
 func iso_to_screen(world_position: Vector2) -> Vector2:
 	var projected := MAP_ORIGIN + Vector2(
@@ -925,7 +954,46 @@ func draw_effects() -> void:
 				var to := position + Vector2(cos(angle), sin(angle) * 0.55) * (18.0 + progress * 42.0)
 				draw_line(from, to, color, 2.5)
 
+func enemy_display_name(kind: String) -> String:
+	match kind:
+		"mireling":
+			return "MIRELING"
+		"forge_golem":
+			return "FORGE GOLEM"
+		"astral_sentry":
+			return "ASTRAL SENTRY"
+		_:
+			return "SHARDLING"
+
+func draw_level_select(viewport: Vector2) -> void:
+	draw_rect(Rect2(Vector2.ZERO, viewport), Color(void_color, 0.9), true)
+	var panel := Rect2(170, 42, 940, 636)
+	draw_rect(Rect2(panel.position + Vector2(7, 9), panel.size), Color(0.0, 0.0, 0.0, 0.3), true)
+	draw_rect(panel, Color(void_color, 0.98), true)
+	draw_line(panel.position, panel.position + Vector2(panel.size.x, 0), accent_color, 2.0)
+	draw_line(panel.position + Vector2(0, panel.size.y), panel.position + panel.size, Color(accent_color, 0.35), 1.0)
+	draw_string(ui_font, Vector2(0, 104), "SELECT DEPTH", HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 40, paper_color)
+	draw_string(ui_font, Vector2(0, 138), "Choose a remembered descent", HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 16, muted_color)
+	for index in range(LEVELS.size()):
+		var level: Dictionary = LEVELS[index]
+		var selected := index == selected_level
+		var row := Rect2(220, 180 + index * 88, 840, 68)
+		var row_color := accent_color if selected else muted_color
+		draw_rect(Rect2(row.position + Vector2(4, 5), row.size), Color(0.0, 0.0, 0.0, 0.22), true)
+		draw_rect(row, Color(void_color, 0.98) if selected else Color(deep_color, 0.92), true)
+		draw_line(row.position, row.position + Vector2(row.size.x, 0), row_color if selected else Color(muted_color, 0.35), 2.0 if selected else 1.0)
+		draw_hud_diamond(row.position + Vector2(32, 34), 12.0 if selected else 8.0, row_color if selected else Color(muted_color, 0.45))
+		draw_string(ui_font, row.position + Vector2(62, 27), "%02d" % (index + 1), HORIZONTAL_ALIGNMENT_LEFT, -1, 16, row_color)
+		draw_string(ui_font, row.position + Vector2(112, 31), String(level["name"]), HORIZONTAL_ALIGNMENT_LEFT, -1, 22, paper_color if selected else muted_color)
+		draw_string(ui_font, row.position + Vector2(112, 52), enemy_display_name(String(level["enemy_kind"])), HORIZONTAL_ALIGNMENT_LEFT, -1, 13, row_color if selected else muted_color)
+		draw_string(ui_font, row.position + Vector2(600, 40), "3 SHARDS  •  5 ENEMIES", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, row_color if selected else muted_color)
+	var footer := "W / S or arrows select     ENTER / SPACE descend     L / ESC close"
+	draw_string(ui_font, Vector2(0, 632), footer, HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 14, muted_color)
+
 func draw_hud(viewport: Vector2) -> void:
+	if state == "level_select":
+		draw_level_select(viewport)
+		return
 	draw_plaque(Rect2(30, 24, 330, 76), accent_color)
 	draw_string(ui_font, Vector2(50, 57), "FACETED DEPTHS", HORIZONTAL_ALIGNMENT_LEFT, -1, 30, paper_color)
 	var level_text := "DEPTH %02d / %02d  •  %s" % [level_index + 1, LEVELS.size(), level_name]
@@ -948,7 +1016,7 @@ func draw_hud(viewport: Vector2) -> void:
 			draw_hud_diamond(center, 10.0, danger_color.lightened(0.08))
 		else:
 			draw_hud_diamond(center, 10.0, Color(muted_color, 0.2))
-	var controls := "WASD / ARROWS  MOVE     SPACE  STRIKE     R  RESTART"
+	var controls := "WASD / ARROWS  MOVE     SPACE  STRIKE     L  LEVELS     R  RESTART"
 	var controls_size := ui_font.get_string_size(controls, HORIZONTAL_ALIGNMENT_LEFT, -1, 13)
 	var controls_rect := Rect2(viewport.x - controls_size.x - 68, viewport.y - 54, controls_size.x + 38, 30)
 	draw_plaque(controls_rect, slate_light_color)

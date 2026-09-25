@@ -9,7 +9,7 @@ related_targets: []
 
 ## Scope and Mode
 
-Experience surface for a four-level keyboard-controlled dungeon run in Godot. The player explores distinct connected maps, fights themed enemies, collects three shards per level, and reaches each gate.
+Experience surface for a four-level keyboard-controlled dungeon run in Godot. A launch-time level selector lets the player choose any authored depth, then explore its connected map, fight themed enemies, collect three shards, and reach the gate.
 
 ## Direction Contract
 

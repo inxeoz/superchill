@@ -190,6 +190,9 @@ All visible components are custom-drawn Godot geometry in `faceted_depths.gd`; t
 - **Vitality:** 280 × 54 px at bottom-left; 14 px muted label and five 10 px-radius diamonds spaced 29 px apart. Active markers are oxblood; lost markers are muted at 20% alpha.
 - **Controls:** Content-fit, 30 px high, 19 px inset, slate-light top rule, and 13 px muted uppercase copy.
 
+### Level Select
+- **Level select:** Full-viewport dark veil with one square selection panel, four authored depth rows, a bright selected row, and keyboard-only guidance. `L` opens it during play; `W/S` or arrows move; `Enter/Space` confirms; `L/Esc` closes.
+
 ### Messages and States
 - **Message plaque:** Top-centered at `y = 108`, content width plus 44 px, 42 px high, cyan top rule, 18 px paper text, and alpha fade on exit.
 - **State overlay:** Full-viewport dark veil, no buttons; a cyan or oxblood crystal, 42 px title, and 17 px restart/result subtitle communicate win or loss. Restart remains the physical `R` key.

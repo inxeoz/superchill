@@ -24,7 +24,7 @@ Godot 4.7, desktop-first with a web-export-friendly implementation, rendered at 
 
 ## Capabilities and Constraints
 
-The run includes four deterministic levels, each with its own connected map, palette, enemy behavior, three shards, and exit. Desktop and web targets must share the same gameplay code. Only supplied assets with known redistribution terms may ship; other packs remain blocked pending license confirmation.
+The run includes four deterministic levels, a launch-time level selector, each with its own connected map, palette, enemy behavior, three shards, and exit. Desktop and web targets must share the same gameplay code. Only supplied assets with known redistribution terms may ship; other packs remain blocked pending license confirmation.
 
 ## Evidence on Hand
 
