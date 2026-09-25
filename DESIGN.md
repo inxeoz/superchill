@@ -165,7 +165,7 @@ HUD plaques stay at the perimeter: 30 px from the left, right, and bottom edges,
 
 This world uses tonal layering and painter ordering, not blurred interface shadows. Rendering proceeds as void, cavern atmosphere and dust or open-sky atmosphere, floor facets and water, low front boundary, depth-sorted walls, sources, and entities, transient effects, then HUD.
 
-Floor tiles, water, walls, bottle sources, shards, gate or cave exit, player, and enemies all share one list sorted by ascending projected screen Y (back-to-front), so painter's order stays correct under every camera yaw — a wall never paints its face over a nearer floor tile. Lower objects therefore draw later and occlude upper objects; depth must not be assigned by entity type. Projected positions round to 2 px increments before drawing, then pass through the movable 2.5D camera transform.
+Floor tiles, water, walls, bottle sources, shards, gate or surface portal, player, and enemies all share one list sorted by ascending projected screen Y (back-to-front), so painter's order stays correct under every camera yaw — a wall never paints its face over a nearer floor tile. Lower objects therefore draw later and occlude upper objects; depth must not be assigned by entity type. Projected positions round to 2 px increments before drawing, then pass through the movable 2.5D camera transform.
 
 Contact shadows are flattened diamonds beneath shards, the player, and enemies. Plaques use a hard black rectangle offset by 5 × 7 px. There are no soft or diffuse shadow treatments.
 

@@ -3229,38 +3229,41 @@ func draw_leaf(center: Vector2, scale: float, color: Color) -> void:
 
 func draw_surface_exit() -> void:
 	var position := iso_to_screen(Vector2(exit_cell) + Vector2(0.5, 0.5))
+	var frame := gate_color
 	var glow := safe_color
-	draw_shadow(position, 42.0, 0.34)
+	draw_shadow(position, 40.0, 0.32)
+	# Left pillar.
 	draw_colored_polygon(PackedVector2Array([
-		position + Vector2(-43, 18),
-		position + Vector2(-34, -43),
-		position + Vector2(-15, -70),
-		position + Vector2(18, -67),
-		position + Vector2(41, -33),
-		position + Vector2(46, 18),
-	]), gate_color)
+		position + Vector2(-28, 6),
+		position + Vector2(-20, 6),
+		position + Vector2(-20, -46),
+		position + Vector2(-28, -46),
+	]), frame.darkened(0.25))
+	# Right pillar.
 	draw_colored_polygon(PackedVector2Array([
-		position + Vector2(-26, 16),
-		position + Vector2(-22, -34),
-		position + Vector2(0, -52),
-		position + Vector2(24, -31),
-		position + Vector2(28, 16),
-	]), Color(glow, 0.3))
+		position + Vector2(20, 6),
+		position + Vector2(28, 6),
+		position + Vector2(28, -46),
+		position + Vector2(20, -46),
+	]), frame.lightened(0.08))
+	# Pointed arch band joining the pillar tops.
 	draw_colored_polygon(PackedVector2Array([
-		position + Vector2(-18, 16),
-		position + Vector2(-15, -28),
-		position + Vector2(0, -43),
-		position + Vector2(17, -26),
-		position + Vector2(20, 16),
-	]), ink_color)
-	draw_line(position + Vector2(0, -42), position + Vector2(0, 12), Color(glow, 0.8), 2.0)
+		position + Vector2(-28, -46),
+		position + Vector2(0, -74),
+		position + Vector2(28, -46),
+		position + Vector2(20, -46),
+		position + Vector2(0, -64),
+		position + Vector2(-20, -46),
+	]), frame)
+	# Open glowing doorway (the way forward, not a cave mouth).
 	draw_colored_polygon(PackedVector2Array([
-		position + Vector2(-47, 18),
-		position + Vector2(-34, -43),
-		position + Vector2(-15, -70),
-		position + Vector2(-5, -38),
-		position + Vector2(-16, 16),
-	]), gate_color.lightened(0.12))
+		position + Vector2(-18, 6),
+		position + Vector2(18, 6),
+		position + Vector2(18, -46),
+		position + Vector2(0, -64),
+		position + Vector2(-18, -46),
+	]), Color(glow, 0.34))
+	draw_line(position + Vector2(0, -70), position + Vector2(0, 4), Color(paper_color, 0.5), 1.0)
 
 func draw_gate() -> void:
 	var position := iso_to_screen(Vector2(exit_cell) + Vector2(0.5, 0.5))
