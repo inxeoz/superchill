@@ -299,6 +299,8 @@ var life_jacket_on_ground := false
 var life_jacket_position := Vector2.ZERO
 var craft_selected := 0
 var pickup_selected := 0
+var recipe_index := 0
+var has_fishing_catcher := false
 var craft_slots: Array[int] = []
 var state := "playing"
 var message := ""
@@ -395,6 +397,7 @@ func load_level(index: int) -> void:
 	shards_collected = 0
 	bottle_count = 0
 	has_life_jacket = false
+	has_fishing_catcher = false
 	life_jacket_on_ground = false
 	life_jacket_position = Vector2.ZERO
 	state = "playing"
@@ -691,6 +694,22 @@ const ITEM_LABELS := {
 	"wood scrap": "WOOD SCRAPS",
 	"coiled spring": "COILED SPRINGS",
 }
+# Buildable recipes. "bottles" groups every empty bottle source; other keys
+# are item kinds (ITEM_ORDER). Add a new entry here to offer another build.
+const RECIPES := [
+	{
+		"id": "life_jacket",
+		"name": "LIFE JACKET",
+		"blurb": "Eight empty bottles for a flotation jacket",
+		"needs": {"bottles": 8},
+	},
+	{
+		"id": "fishing_catcher",
+		"name": "FISHING CATCHER",
+		"blurb": "Rope, wood, wrapper and spring for a river catch",
+		"needs": {"rope": 2, "wood scrap": 1, "plastic wrapper": 1, "coiled spring": 1},
+	},
+]
 
 func nearest_litter_index() -> int:
 	var best := -1
@@ -828,6 +847,7 @@ func open_craft_table() -> void:
 		return
 	craft_slots.clear()
 	craft_selected = 0
+	recipe_index = 0
 	state = "crafting"
 	message_timer = 0.0
 
@@ -875,28 +895,79 @@ func total_collected_items() -> int:
 		total += int(value)
 	return total
 
+func recipe_needs(index: int) -> Dictionary:
+	return RECIPES[clampi(index, 0, RECIPES.size() - 1)]["needs"]
+
+func recipe_slot_targets(index: int) -> Array:
+	var targets: Array = []
+	var needs := recipe_needs(index)
+	for kind in needs:
+		var count: int = needs[kind]
+		for i in range(count):
+			targets.append(String(kind))
+	return targets
+
+func recipe_built(index: int) -> bool:
+	match String(RECIPES[clampi(index, 0, RECIPES.size() - 1)]["id"]):
+		"life_jacket":
+			return has_life_jacket
+		"fishing_catcher":
+			return has_fishing_catcher
+		_:
+			return false
+
+func craft_build_kind(element_index: int) -> String:
+	if element_index < bottle_sources.size():
+		return "bottles"
+	return craft_element_kind(element_index)
+
+func recipe_kind_label(kind: String) -> String:
+	if kind == "bottles":
+		return "EMPTY BOTTLES"
+	return String(ITEM_LABELS.get(kind, "ITEMS"))
+
+func switch_recipe(step: int) -> void:
+	craft_slots.clear()
+	recipe_index = clampi(recipe_index + step, 0, RECIPES.size() - 1)
+	clamp_craft_selection()
+	message_timer = 0.0
+
 func clamp_craft_selection() -> void:
 	craft_selected = clampi(craft_selected, 0, maxi(0, craft_visible_elements().size() - 1))
 
 func add_craft_element() -> void:
 	if state != "crafting":
 		return
-	if has_life_jacket:
-		message = "The life jacket is already complete"
+	if recipe_built(recipe_index):
+		message = String(RECIPES[recipe_index]["name"]) + " is already built"
 		message_timer = 2.0
 		return
-	if craft_slots.size() >= LIFE_JACKET_BOTTLES:
-		message = "The jacket already has eight items"
-		message_timer = 2.0
-		return
+	var targets := recipe_slot_targets(recipe_index)
 	var visible := craft_visible_elements()
 	if visible.is_empty():
 		message = "Nothing collected yet — search garbage with F"
 		message_timer = 2.0
 		return
 	var element_index: int = visible[clampi(craft_selected, 0, visible.size() - 1)]
+	var build_kind := craft_build_kind(element_index)
+	var need_count := 0
+	for kind in targets:
+		if kind == build_kind:
+			need_count += 1
+	if need_count == 0:
+		message = "This item is not used to build " + String(RECIPES[recipe_index]["name"])
+		message_timer = 2.0
+		return
+	var added_count := 0
+	for slot in craft_slots:
+		if craft_build_kind(slot) == build_kind:
+			added_count += 1
+	if added_count >= need_count:
+		message = "No more room for " + recipe_kind_label(build_kind)
+		message_timer = 2.0
+		return
 	if craft_element_available(element_index) <= 0:
-		message = "No items left in that element"
+		message = "No more " + recipe_kind_label(build_kind) + " in your stash"
 		message_timer = 2.0
 		return
 	craft_slots.append(element_index)
@@ -912,28 +983,34 @@ func remove_last_craft_element() -> void:
 func combine_craft_elements() -> void:
 	if state != "crafting":
 		return
-	if has_life_jacket:
+	if recipe_built(recipe_index):
 		close_craft_table()
-		message = "Your bottle life jacket is ready"
+		message = String(RECIPES[recipe_index]["name"]) + " is already built"
 		message_timer = 2.0
 		return
-	if craft_slots.size() < LIFE_JACKET_BOTTLES:
-		message = "Add " + str(LIFE_JACKET_BOTTLES - craft_slots.size()) + " more items"
+	var targets := recipe_slot_targets(recipe_index)
+	if craft_slots.size() < targets.size():
+		message = "Can't create — " + str(targets.size() - craft_slots.size()) + " more items required"
 		message_timer = 2.0
 		return
-	var bottles_used := 0
 	for slot in craft_slots:
 		var inventory := craft_element_inventory(slot)
 		var kind := craft_element_kind(slot)
 		inventory[kind] = maxi(0, int(inventory.get(kind, 0)) - 1)
 		if slot < bottle_sources.size():
-			bottles_used += 1
-	bottle_count = maxi(0, bottle_count - bottles_used)
-	has_life_jacket = true
-	life_jacket_on_ground = false
+			bottle_count = maxi(0, bottle_count - 1)
+	match String(RECIPES[recipe_index]["id"]):
+		"life_jacket":
+			has_life_jacket = true
+			life_jacket_on_ground = false
+			message = "Life jacket woven — the river is passable"
+		"fishing_catcher":
+			has_fishing_catcher = true
+			message = "Fishing catcher crafted — take it to the river"
+		_:
+			message = "Crafted!"
 	craft_slots.clear()
 	state = "playing"
-	message = "Life jacket woven — the river is passable"
 	message_timer = 3.0
 	spawn_burst(player_position, safe_color, 18)
 	add_shake(0.32)
@@ -1065,7 +1142,9 @@ func _unhandled_input(event: InputEvent) -> void:
 				close_pickup_select()
 		elif state == "crafting":
 			var craft_visible_count := craft_visible_elements().size()
-			if keycode == KEY_UP or keycode == KEY_W:
+			if keycode == KEY_TAB:
+				switch_recipe(1)
+			elif keycode == KEY_UP or keycode == KEY_W:
 				if craft_visible_count > 0:
 					craft_selected = posmod(craft_selected - 1, craft_visible_count)
 			elif keycode == KEY_DOWN or keycode == KEY_S:
@@ -2061,56 +2140,76 @@ func draw_craft_table(viewport: Vector2) -> void:
 	draw_line(panel.position, panel.position + Vector2(panel.size.x, 0), accent_color, 2.0)
 	draw_line(panel.position + Vector2(0, panel.size.y), panel.position + panel.size, Color(accent_color, 0.35), 1.0)
 	draw_string(ui_font, Vector2(0, 100), "CRAFTING TABLE", HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 34, paper_color)
-	draw_string(ui_font, Vector2(0, 132), "SELECT COLLECTED ITEMS  •  BUILD A FLOTATION JACKET", HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 14, muted_color)
+	draw_string(ui_font, Vector2(0, 132), "COLLECT MATERIALS  •  CHOOSE WHAT TO BUILD", HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 14, muted_color)
 	draw_line(Vector2(270, 158), Vector2(1010, 158), Color(slate_light_color, 0.45), 1.0)
-	draw_string(ui_font, Vector2(278, 193), "ELEMENT SOURCES", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted_color)
+	# ---- recipe selector ----
+	draw_string(ui_font, Vector2(278, 180), "BUILD OPTIONS", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted_color)
+	for recipe_i in range(RECIPES.size()):
+		var selected_recipe := recipe_i == recipe_index
+		var chip := Rect2(278 + recipe_i * 232, 192, 224, 30)
+		var chip_color := accent_color if selected_recipe else safe_color
+		draw_rect(Rect2(chip.position + Vector2(3, 4), chip.size), Color(0.0, 0.0, 0.0, 0.24), true)
+		draw_rect(chip, Color(ink_color, 0.96) if not selected_recipe else Color(void_color, 0.98), true)
+		draw_line(chip.position, chip.position + Vector2(chip.size.x, 0), chip_color if selected_recipe else Color(muted_color, 0.3), 2.0 if selected_recipe else 1.0)
+		draw_string(ui_font, chip.position + Vector2(12, 20), String(RECIPES[recipe_i]["name"]), HORIZONTAL_ALIGNMENT_LEFT, -1, 13, paper_color if selected_recipe else muted_color)
+		if recipe_built(recipe_i):
+			draw_string(ui_font, chip.position + Vector2(0, 20), "BUILT", HORIZONTAL_ALIGNMENT_RIGHT, chip.size.x - 12, 11, safe_color)
+	draw_line(Vector2(270, 234), Vector2(1010, 234), Color(slate_light_color, 0.45), 1.0)
+	# ---- material palette ----
+	draw_string(ui_font, Vector2(278, 254), "ELEMENT SOURCES", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted_color)
 	var visible_elements := craft_visible_elements()
 	if visible_elements.is_empty():
-		draw_string(ui_font, Vector2(278, 252), "NOTHING COLLECTED YET", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, paper_color)
-		draw_string(ui_font, Vector2(278, 280), "SEARCH GARBAGE WITH F TO FIND ITEMS", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted_color)
+		draw_string(ui_font, Vector2(278, 300), "NOTHING COLLECTED YET", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, paper_color)
+		draw_string(ui_font, Vector2(278, 326), "SEARCH GARBAGE WITH F TO FIND ITEMS", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted_color)
 	else:
 		for row_index in range(visible_elements.size()):
 			var element_index: int = visible_elements[row_index]
-			var row := Rect2(278 + (row_index % 2) * 368, 210 + (row_index / 2) * 52, 350, 50)
+			var row := Rect2(278 + (row_index % 2) * 236, 268 + (row_index / 2) * 42, 230, 38)
 			var selected := row_index == craft_selected
 			var row_color := accent_color if selected else safe_color
-			draw_rect(Rect2(row.position + Vector2(4, 5), row.size), Color(0.0, 0.0, 0.0, 0.24), true)
+			draw_rect(Rect2(row.position + Vector2(3, 4), row.size), Color(0.0, 0.0, 0.0, 0.24), true)
 			draw_rect(row, Color(ink_color, 0.96) if not selected else Color(void_color, 0.98), true)
 			draw_line(row.position, row.position + Vector2(row.size.x, 0), row_color if selected else Color(muted_color, 0.3), 2.0 if selected else 1.0)
 			if element_index < bottle_sources.size():
-				draw_bottle(row.position + Vector2(28, 31), 0.52, row_color)
+				draw_bottle(row.position + Vector2(24, 24), 0.48, row_color)
 			else:
-				draw_item_icon(craft_element_kind(element_index), row.position + Vector2(22, 31))
-			draw_string(ui_font, row.position + Vector2(54, 30), craft_element_label(element_index), HORIZONTAL_ALIGNMENT_LEFT, -1, 13, paper_color if selected else muted_color)
-			draw_string(ui_font, row.position + Vector2(0, 31), "×%02d" % craft_element_available(element_index), HORIZONTAL_ALIGNMENT_RIGHT, row.size.x - 14, 16, row_color)
-	draw_string(ui_font, Vector2(676, 193), "JACKET BUILD", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted_color)
-	for index in range(LIFE_JACKET_BOTTLES):
-		var column := index % 4
-		var row_index := index / 4
-		var slot := Rect2(680 + column * 74, 214 + row_index * 82, 58, 66)
-		draw_rect(Rect2(slot.position + Vector2(3, 4), slot.size), Color(0.0, 0.0, 0.0, 0.24), true)
-		draw_rect(slot, Color(ink_color, 0.96), true)
-		var slot_color := safe_color if index < craft_slots.size() else Color(muted_color, 0.35)
-		draw_polyline(PackedVector2Array([slot.position, slot.position + Vector2(slot.size.x, 0), slot.position + slot.size, slot.position + Vector2(0, slot.size.y), slot.position]), slot_color, 1.5, true)
-		if index < craft_slots.size():
-			draw_bottle(slot.get_center() + Vector2(0, 8), 0.78, safe_color)
-	var progress_text := str(craft_slots.size()) + " / " + str(LIFE_JACKET_BOTTLES) + " ITEMS"
-	var progress_color := safe_color if craft_slots.size() >= LIFE_JACKET_BOTTLES else accent_color
-	draw_string(ui_font, Vector2(676, 420), progress_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, progress_color)
-	if has_life_jacket:
-		draw_string(ui_font, Vector2(676, 456), "LIFE JACKET — WEARING (G TO DROP)", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, safe_color)
-	elif life_jacket_on_ground:
-		var dropped_hint := "LIFE JACKET ON GROUND — E TO WEAR" if player_position.distance_to(life_jacket_position) > 0.85 else "PRESS E TO WEAR"
-		draw_string(ui_font, Vector2(676, 456), dropped_hint, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, accent_color)
-	elif craft_slots.size() >= LIFE_JACKET_BOTTLES:
-		draw_string(ui_font, Vector2(676, 456), "PRESS ENTER TO COMBINE", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, paper_color)
+				draw_item_icon(craft_element_kind(element_index), row.position + Vector2(22, 24))
+			draw_string(ui_font, row.position + Vector2(50, 26), craft_element_label(element_index), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, paper_color if selected else muted_color)
+			draw_string(ui_font, row.position + Vector2(0, 26), "×%02d" % craft_element_available(element_index), HORIZONTAL_ALIGNMENT_RIGHT, row.size.x - 12, 15, row_color)
+	# ---- build requirement for the selected recipe ----
+	var recipe_targets := recipe_slot_targets(recipe_index)
+	var recipe_done := craft_slots.size() >= recipe_targets.size()
+	draw_string(ui_font, Vector2(760, 254), "BUILDING: " + String(RECIPES[recipe_index]["name"]), HORIZONTAL_ALIGNMENT_LEFT, -1, 15, accent_color)
+	draw_string(ui_font, Vector2(760, 278), String(RECIPES[recipe_index]["blurb"]), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, muted_color)
+	var needs := recipe_needs(recipe_index)
+	var row_y := 304
+	for kind in needs:
+		var need_count: int = needs[kind]
+		var added := 0
+		for slot in craft_slots:
+			if craft_build_kind(slot) == String(kind):
+				added += 1
+		var ok := added >= need_count
+		var line_color := safe_color if ok else accent_color
+		draw_string(ui_font, Vector2(760, row_y), recipe_kind_label(String(kind)) + "   " + str(mini(added, need_count)) + " / " + str(need_count), HORIZONTAL_ALIGNMENT_LEFT, -1, 13, line_color)
+		row_y += 24
+	var status_color := safe_color if recipe_done else muted_color
+	if recipe_built(recipe_index):
+		var built_text := String(RECIPES[recipe_index]["name"]) + " — BUILT"
+		if recipe_index == 0 and has_life_jacket:
+			built_text = "LIFE JACKET — WEARING (G TO DROP)"
+		draw_string(ui_font, Vector2(760, row_y + 8), built_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, safe_color)
+	elif recipe_done:
+		draw_string(ui_font, Vector2(760, row_y + 8), "PRESS ENTER TO BUILD", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, paper_color)
 	else:
-		draw_string(ui_font, Vector2(676, 456), "CHOOSE AN ELEMENT AND PRESS SPACE", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted_color)
+		draw_string(ui_font, Vector2(760, row_y + 8), "ADD MATERIALS", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted_color)
 	if message_timer > 0.0:
 		draw_string(ui_font, Vector2(0, 526), message, HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 15, paper_color)
 	var controls_rect := Rect2(300, 574, 680, 56)
 	draw_plaque(controls_rect, slate_light_color)
-	var controls_text := "E EQUIP LIFE JACKET     B/ESC CLOSE" if life_jacket_on_ground else "W/S SELECT     SPACE ADD     X REMOVE     ENTER COMBINE     B/ESC CLOSE"
+	var controls_text := String("TAB RECIPE     W/S ITEM     SPACE ADD     X REMOVE     ENTER BUILD     B/ESC CLOSE")
+	if life_jacket_on_ground:
+		controls_text = "E EQUIP LIFE JACKET     " + controls_text
 	draw_string(ui_font, Vector2(0, 608), controls_text, HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 13, muted_color)
 
 func draw_hud(viewport: Vector2) -> void:

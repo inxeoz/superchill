@@ -335,7 +335,7 @@ func validate_surface_level() -> bool:
 	game.update_surface_level()
 	if game.level_index != 1 or game.level_name != "FACETED DEPTHS":
 		return false
-	# mixed craft: any eight collected items weave the jacket
+	# jacket is bottles-only: debris cannot be added, combine needs 8 bottles
 	game.load_level(0)
 	game.bottle_inventory["dustbin"] = 4
 	game.item_inventory["leaves"] = 4
@@ -344,13 +344,54 @@ func validate_surface_level() -> bool:
 	for slot_index in range(4):
 		game.craft_selected = 0
 		game.add_craft_element()
-	for slot_index in range(4):
-		game.craft_selected = 1
+	if game.craft_slots.size() != 4:
+		return false
+	game.craft_selected = 1
+	game.add_craft_element()
+	if game.craft_slots.size() != 4:
+		return false
+	game.combine_craft_elements()
+	if game.has_life_jacket or game.state != "crafting" or game.craft_slots.size() != 4:
+		return false
+	game.bottle_inventory["dustbin"] = 8
+	game.bottle_count = 8
+	game.craft_slots.clear()
+	for slot_index in range(8):
+		game.craft_selected = 0
 		game.add_craft_element()
 	if game.craft_slots.size() != game.LIFE_JACKET_BOTTLES:
 		return false
 	game.combine_craft_elements()
-	if not game.has_life_jacket or game.bottle_count != 0 or int(game.item_inventory.get("leaves", 0)) != 0:
+	if not game.has_life_jacket or game.bottle_count != 0 or int(game.item_inventory.get("leaves", 0)) != 4:
+		return false
+	# fishing catcher recipe: Tab to it, add its materials, build
+	game.load_level(0)
+	game.item_inventory["rope"] = 2
+	game.item_inventory["wood scrap"] = 1
+	game.item_inventory["plastic wrapper"] = 1
+	game.item_inventory["coiled spring"] = 1
+	game.open_craft_table()
+	game.switch_recipe(1)
+	if game.recipe_index != 1:
+		return false
+	var cat_visible: Array = game.craft_visible_elements()
+	for need_kind in ["rope", "wood scrap", "plastic wrapper", "coiled spring"]:
+		var pos := -1
+		for i in range(cat_visible.size()):
+			if game.craft_element_kind(cat_visible[i]) == need_kind:
+				pos = i
+		if pos < 0:
+			return false
+		game.craft_selected = pos
+		var need_count: int = game.recipe_needs(1)[need_kind]
+		for add_i in range(need_count):
+			game.add_craft_element()
+	if game.craft_slots.size() != 5:
+		return false
+	game.combine_craft_elements()
+	if not game.has_fishing_catcher or game.state != "playing":
+		return false
+	if int(game.item_inventory.get("rope", 0)) != 0:
 		return false
 	game.load_level(0)
 	if game.has_life_jacket:
