@@ -690,6 +690,14 @@ func tile_polygon(cell: Vector2i, height := 0.0) -> PackedVector2Array:
 	points.append(points[0])
 	return points
 
+func wall_faces(floor: PackedVector2Array, top: PackedVector2Array) -> Array[PackedVector2Array]:
+	return [
+		PackedVector2Array([top[0], top[1], floor[1], floor[0]]),
+		PackedVector2Array([top[1], top[2], floor[2], floor[1]]),
+		PackedVector2Array([top[2], top[3], floor[3], floor[2]]),
+		PackedVector2Array([top[3], top[0], floor[0], floor[3]]),
+	]
+
 func draw_floors() -> void:
 	for key in walkable:
 		var cell: Vector2i = key
@@ -773,21 +781,12 @@ func draw_wall(cell: Vector2i, height := WALL_HEIGHT) -> void:
 	var top := tile_polygon(cell, height)
 	var top_center := iso_to_screen(Vector2(cell) + Vector2(0.5, 0.5))
 	top_center.y -= height
-	var right_face := PackedVector2Array([
-		top[1],
-		top[2],
-		floor[2],
-		floor[1],
-	])
-	var left_face := PackedVector2Array([
-		top[2],
-		top[3],
-		floor[3],
-		floor[2],
-	])
+	var faces := wall_faces(floor, top)
 	var top_color := ink_soft_color if posmod(cell.x + cell.y, 2) == 0 else wall_alt_color
-	draw_colored_polygon(right_face, ink_color.darkened(0.16))
-	draw_colored_polygon(left_face, ink_color)
+	draw_colored_polygon(faces[0], ink_color.darkened(0.28))
+	draw_colored_polygon(faces[3], ink_color.darkened(0.08))
+	draw_colored_polygon(faces[1], ink_color.darkened(0.16))
+	draw_colored_polygon(faces[2], ink_color)
 	draw_colored_polygon(top, top_color)
 	draw_colored_polygon(PackedVector2Array([
 		top_center,
@@ -795,8 +794,8 @@ func draw_wall(cell: Vector2i, height := WALL_HEIGHT) -> void:
 		top[2],
 	]), top_color.lightened(0.08))
 	draw_polyline(top, Color("0a0d18"), 1.5, true)
-	draw_line(right_face[0], right_face[3], Color("0a0d18"), 1.0)
-	draw_line(left_face[0], left_face[3], Color("0a0d18"), 1.0)
+	draw_line(faces[1][0], faces[1][3], Color("0a0d18"), 1.0)
+	draw_line(faces[2][0], faces[2][3], Color("0a0d18"), 1.0)
 
 func draw_gate() -> void:
 	var position := iso_to_screen(Vector2(exit_cell) + Vector2(0.5, 0.5))

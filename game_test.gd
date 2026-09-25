@@ -45,6 +45,10 @@ func run_test() -> void:
 		quit(1)
 		return
 	game.reset_camera()
+	if not validate_wall_faces():
+		quit(1)
+		return
+	game.reset_camera()
 	for direction in ["ne", "se", "sw", "nw"]:
 		if not game.player_frames.has(direction) or game.player_frames[direction].size() != 4:
 			quit(1)
@@ -89,6 +93,17 @@ func run_test() -> void:
 		return
 	print("game_test: ok")
 	quit(0)
+
+func validate_wall_faces() -> bool:
+	game.camera_angle = PI * 0.5
+	var floor: PackedVector2Array = game.tile_polygon(Vector2i(1, 1))
+	var top: PackedVector2Array = game.tile_polygon(Vector2i(1, 1), 58.0)
+	var faces: Array[PackedVector2Array] = game.wall_faces(floor, top)
+	if faces.size() != 4:
+		return false
+	var face: PackedVector2Array = faces[3]
+	var center := (face[0] + face[1] + face[2] + face[3]) * 0.25
+	return Geometry2D.is_point_in_polygon(center, face)
 
 func validate_level(index: int) -> bool:
 	game.load_level(index)
