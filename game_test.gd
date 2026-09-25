@@ -163,7 +163,7 @@ func validate_wall_faces() -> bool:
 func validate_rotated_border() -> bool:
 	game.load_level(0)
 	var border: Dictionary = game.border_cells()
-	if border.size() != 38:
+	if border.size() != 50:
 		return false
 	var expected_walls := 0
 	for y in range(game.map_rows.size()):
@@ -191,7 +191,7 @@ func validate_rotated_border() -> bool:
 
 func validate_surface_level() -> bool:
 	game.load_level(0)
-	if game.level_index != 0 or game.level_kind != "surface" or game.map_rows.size() != 9:
+	if game.level_index != 0 or game.level_kind != "surface" or game.map_rows.size() != 11:
 		return false
 	if game.walkable.is_empty() or game.flow.size() != game.walkable.size():
 		return false
@@ -202,9 +202,9 @@ func validate_surface_level() -> bool:
 	if not game.enemies.is_empty() or not game.shards.is_empty() or game.bottle_sources.size() < 4:
 		return false
 	for row in game.map_rows:
-		if String(row).length() != 12:
+		if String(row).length() != 16:
 			return false
-	for y in range(1, 8):
+	for y in range(1, 10):
 		if not game.water_cells.has(Vector2i(6, y)):
 			return false
 	var available_bottles := 0
@@ -226,8 +226,57 @@ func validate_surface_level() -> bool:
 		return false
 	game.player_position = Vector2(game.exit_cell) + Vector2(0.5, 0.5)
 	game.update_surface_level()
-	if game.level_index != 0:
+	if game.level_index != 1:
 		return false
+	game.load_level(0)
+	game.open_craft_table()
+	if game.state != "crafting" or not game.craft_visible_elements().is_empty():
+		return false
+	game.close_craft_table()
+	var pickup_item: Dictionary = game.litter[0]
+	var pickup_position: Vector2 = pickup_item["position"]
+	if not game.walkable.has(game.cell_at(pickup_position)) or game.water_cells.has(game.cell_at(pickup_position)):
+		return false
+	game.player_position = pickup_position
+	game.update_surface_level()
+	if game.item_count != 0 or game.litter.size() != 12 or game.level_index != 0:
+		return false
+	# several items in reach -> F opens the item list
+	game.try_pick_litter()
+	if game.state != "pickup_select" or game.pickup_selected != 0:
+		return false
+	# closing the list without picking leaves everything as is
+	game.close_pickup_select()
+	if game.state != "playing" or game.item_count != 0 or game.litter.size() != 12:
+		return false
+	# reopen and confirm -> picks all of the selected kind at once
+	game.try_pick_litter()
+	if game.state != "pickup_select":
+		return false
+	game.confirm_pickup_selection()
+	if game.state != "playing" or game.item_count != 2 or game.litter.size() != 10:
+		return false
+	if int(game.item_inventory.get(String(pickup_item["kind"]), 0)) != 2:
+		return false
+	if game.total_collected_items() != 2:
+		return false
+	# single item in reach -> direct pickup, no list
+	game.player_position = Vector2(4.5, 3.5)
+	game.try_pick_litter()
+	if game.state != "playing" or game.item_count != 3 or int(game.item_inventory.get("plastic wrapper", 0)) != 1:
+		return false
+	game.open_craft_table()
+	if game.state != "crafting":
+		return false
+	var first_visible: Array = game.craft_visible_elements()
+	if first_visible.size() != 2 or first_visible[0] != game.bottle_sources.size() or first_visible[1] != game.bottle_sources.size() + 1:
+		return false
+	if game.craft_element_kind(first_visible[0]) != "leaves" or game.craft_element_kind(first_visible[1]) != "plastic wrapper":
+		return false
+	game.close_craft_table()
+	for source_data in game.bottle_sources:
+		if String(source_data["kind"]) == "dustbin":
+			dustbin = source_data
 	var dustbin_position := Vector2(dustbin["cell"]) + Vector2(0.5, 0.5)
 	var dustbin_charges := int(dustbin["charges"])
 	game.player_position = dustbin_position
@@ -237,7 +286,8 @@ func validate_surface_level() -> bool:
 	if int(game.bottle_inventory.get("dustbin", 0)) != game.bottle_count:
 		return false
 	game.open_craft_table()
-	if game.state != "crafting":
+	var dustbin_visible: Array = game.craft_visible_elements()
+	if game.state != "crafting" or dustbin_visible.size() != 3 or dustbin_visible[0] != 0:
 		return false
 	game.add_craft_element()
 	game.add_craft_element()
@@ -250,9 +300,11 @@ func validate_surface_level() -> bool:
 		game.bottle_inventory[String(source["kind"])] = 2
 	game.bottle_count = game.LIFE_JACKET_BOTTLES
 	game.open_craft_table()
-	for source_index in range(game.bottle_sources.size()):
-		game.craft_selected = source_index
-		game.add_craft_element()
+	var all_visible: Array = game.craft_visible_elements()
+	if all_visible.size() != game.bottle_sources.size() + 2:
+		return false
+	for slot_index in range(game.LIFE_JACKET_BOTTLES):
+		game.craft_selected = slot_index % game.bottle_sources.size()
 		game.add_craft_element()
 	if game.craft_slots.size() != game.LIFE_JACKET_BOTTLES:
 		return false
@@ -278,6 +330,30 @@ func validate_surface_level() -> bool:
 	if not game.has_life_jacket or game.life_jacket_on_ground:
 		return false
 	if not game.can_occupy(water_position, 0.22):
+		return false
+	game.player_position = Vector2(game.exit_cell) + Vector2(0.5, 0.5)
+	game.update_surface_level()
+	if game.level_index != 1 or game.level_name != "FACETED DEPTHS":
+		return false
+	# mixed craft: any eight collected items weave the jacket
+	game.load_level(0)
+	game.bottle_inventory["dustbin"] = 4
+	game.item_inventory["leaves"] = 4
+	game.bottle_count = 4
+	game.open_craft_table()
+	for slot_index in range(4):
+		game.craft_selected = 0
+		game.add_craft_element()
+	for slot_index in range(4):
+		game.craft_selected = 1
+		game.add_craft_element()
+	if game.craft_slots.size() != game.LIFE_JACKET_BOTTLES:
+		return false
+	game.combine_craft_elements()
+	if not game.has_life_jacket or game.bottle_count != 0 or int(game.item_inventory.get("leaves", 0)) != 0:
+		return false
+	game.load_level(0)
+	if game.has_life_jacket:
 		return false
 	game.player_position = Vector2(game.exit_cell) + Vector2(0.5, 0.5)
 	game.update_surface_level()

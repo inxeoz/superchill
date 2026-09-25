@@ -11,6 +11,28 @@ const ATTACK_COOLDOWN := 0.34
 const MAX_HEALTH := 5
 const LIFE_JACKET_BOTTLES := 8
 const SOURCE_REACH := 1.35
+const SOURCE_ITEMS := {
+	"dustbin": ["plastic wrapper", "rope", "leaves"],
+	"recycling": ["plastic wrapper", "coiled spring"],
+	"crate": ["wood scrap", "rope"],
+	"cooler": ["coiled spring", "plastic wrapper"],
+	"bag": ["plastic wrapper", "rope", "leaves"],
+	"compost": ["leaves", "wood scrap"],
+}
+const ITEM_PHRASES := {
+	"leaves": "some leaves",
+	"plastic wrapper": "a plastic wrapper",
+	"rope": "a length of rope",
+	"wood scrap": "a scrap of wood",
+	"coiled spring": "a coiled spring",
+}
+const ITEM_PLURALS := {
+	"leaves": "leaves",
+	"plastic wrapper": "plastic wrappers",
+	"rope": "lengths of rope",
+	"wood scrap": "wood scraps",
+	"coiled spring": "coiled springs",
+}
 const DEFAULT_CAMERA_ZOOM := 1.08
 const CAMERA_FOLLOW_RATE := 2.4
 const LEVELS := [
@@ -18,15 +40,17 @@ const LEVELS := [
 		"name": "RIVER RUN",
 		"kind": "surface",
 		"map": [
-			"############",
-			"#.....~....#",
-			"#..#..~#...#",
-			"#.....~....#",
-			"#..#..~..#.#",
-			"#.....~....#",
-			"#.##..~..#.#",
-			"#.....~....#",
-			"############",
+			"################",
+			"#.....~........#",
+			"#..#..~........#",
+			"#.....~........#",
+			"#..#..~........#",
+			"#.....~........#",
+			"#.##..~........#",
+			"#.....~........#",
+			"#..#..~........#",
+			"#.....~........#",
+			"################",
 		],
 		"shards": [],
 		"spawns": [],
@@ -35,9 +59,25 @@ const LEVELS := [
 			{"kind": "recycling", "name": "RECYCLING BIN", "cell": Vector2i(1, 3), "charges": 1, "bottles": 3},
 			{"kind": "crate", "name": "BOTTLE CRATE", "cell": Vector2i(4, 1), "charges": 1, "bottles": 2},
 			{"kind": "cooler", "name": "PICNIC COOLER", "cell": Vector2i(2, 4), "charges": 1, "bottles": 3},
+			{"kind": "bag", "name": "TRASH BAG", "cell": Vector2i(5, 2), "charges": 1, "bottles": 2},
+			{"kind": "compost", "name": "COMPOST HEAP", "cell": Vector2i(1, 5), "charges": 1, "bottles": 3},
 		],
 		"start": Vector2i(1, 7),
-		"exit": Vector2i(10, 1),
+		"exit": Vector2i(14, 1),
+		"litter": [
+			{"kind": "leaves", "cell": Vector2i(2, 1)},
+			{"kind": "plastic wrapper", "cell": Vector2i(4, 3)},
+			{"kind": "rope", "cell": Vector2i(3, 7)},
+			{"kind": "wood scrap", "cell": Vector2i(2, 2)},
+			{"kind": "coiled spring", "cell": Vector2i(5, 4)},
+			{"kind": "leaves", "cell": Vector2i(1, 1)},
+			{"kind": "rope", "cell": Vector2i(4, 8)},
+			{"kind": "plastic wrapper", "cell": Vector2i(2, 8)},
+			{"kind": "coiled spring", "cell": Vector2i(10, 7)},
+			{"kind": "wood scrap", "cell": Vector2i(12, 3)},
+			{"kind": "leaves", "cell": Vector2i(13, 5)},
+			{"kind": "plastic wrapper", "cell": Vector2i(9, 1)},
+		],
 		"void": "102f3a",
 		"deep": "79bee3",
 		"ink": "294f59",
@@ -242,6 +282,9 @@ var flow: Dictionary = {}
 var shards: Array[Dictionary] = []
 var enemies: Array[Dictionary] = []
 var bottle_sources: Array[Dictionary] = []
+var litter: Array[Dictionary] = []
+var item_count := 0
+var item_inventory: Dictionary = {}
 var effects: Array[Dictionary] = []
 var player_frames: Dictionary = {}
 var sword_frames: Dictionary = {}
@@ -255,6 +298,7 @@ var has_life_jacket := false
 var life_jacket_on_ground := false
 var life_jacket_position := Vector2.ZERO
 var craft_selected := 0
+var pickup_selected := 0
 var craft_slots: Array[int] = []
 var state := "playing"
 var message := ""
@@ -376,6 +420,9 @@ func load_level(index: int) -> void:
 	shards.clear()
 	enemies.clear()
 	bottle_sources.clear()
+	litter.clear()
+	item_count = 0
+	item_inventory.clear()
 	bottle_inventory.clear()
 	solid_cells.clear()
 	effects.clear()
@@ -392,6 +439,13 @@ func load_level(index: int) -> void:
 			"position": Vector2(cell) + Vector2(0.5, 0.5),
 			"taken": false,
 			"phase": shard_index * 1.7,
+		})
+	for item_index in range(level.get("litter", []).size()):
+		var item_data: Dictionary = level["litter"][item_index]
+		litter.append({
+			"kind": String(item_data["kind"]),
+			"position": Vector2(item_data["cell"]) + Vector2(0.5, 0.5),
+			"phase": item_index * 1.3,
 		})
 	rebuild_flow()
 	for spawn_index in range(enemy_spawns.size()):
@@ -629,6 +683,98 @@ func collect_shards() -> void:
 			message = "All depths are clear"
 			message_timer = 99.0
 
+const ITEM_ORDER := ["leaves", "plastic wrapper", "rope", "wood scrap", "coiled spring"]
+const ITEM_LABELS := {
+	"leaves": "LEAVES",
+	"plastic wrapper": "PLASTIC WRAPPERS",
+	"rope": "ROPE",
+	"wood scrap": "WOOD SCRAPS",
+	"coiled spring": "COILED SPRINGS",
+}
+
+func nearest_litter_index() -> int:
+	var best := -1
+	var best_distance := SOURCE_REACH
+	for index in range(litter.size()):
+		var distance := player_position.distance_to(litter[index]["position"])
+		if distance <= best_distance:
+			best = index
+			best_distance = distance
+	return best
+
+func pickable_litter_entries() -> Array:
+	var entries: Array = []
+	var seen: Dictionary = {}
+	for index in range(litter.size()):
+		var position: Vector2 = litter[index]["position"]
+		if player_position.distance_to(position) > SOURCE_REACH:
+			continue
+		var kind := String(litter[index]["kind"])
+		if seen.has(kind):
+			var entry: Dictionary = entries[seen[kind]]
+			entry["count"] = int(entry["count"]) + 1
+		else:
+			seen[kind] = entries.size()
+			entries.append({"kind": kind, "count": 1, "distance": player_position.distance_to(position)})
+	entries.sort_custom(func(a, b): return float(a["distance"]) < float(b["distance"]))
+	return entries
+
+func pick_litter_kind(pick_kind: String) -> int:
+	if state != "playing" or level_kind != "surface":
+		return 0
+	var picked := 0
+	for index in range(litter.size() - 1, -1, -1):
+		var item := litter[index]
+		if String(item["kind"]) != pick_kind:
+			continue
+		if player_position.distance_to(item["position"]) > SOURCE_REACH:
+			continue
+		litter.remove_at(index)
+		picked += 1
+		item_inventory[pick_kind] = int(item_inventory.get(pick_kind, 0)) + 1
+		spawn_burst(item["position"], safe_color, 6)
+	if picked > 0:
+		item_count += picked
+		if picked == 1:
+			message = "You pick up " + String(ITEM_PHRASES[pick_kind])
+		else:
+			message = "You pick up " + str(picked) + " " + String(ITEM_PLURALS[pick_kind])
+		message_timer = 2.0
+		add_shake(0.1)
+	return picked
+
+func try_pick_litter() -> void:
+	var entries := pickable_litter_entries()
+	if entries.is_empty():
+		search_bottle_source()
+		return
+	var total := 0
+	for entry in entries:
+		total += int(entry["count"])
+	if total > 1:
+		pickup_selected = 0
+		state = "pickup_select"
+		message_timer = 0.0
+	else:
+		pick_litter_kind(String(entries[0]["kind"]))
+
+func confirm_pickup_selection() -> void:
+	if state != "pickup_select":
+		return
+	var entries := pickable_litter_entries()
+	if entries.is_empty():
+		state = "playing"
+		return
+	var entry: Dictionary = entries[clampi(pickup_selected, 0, entries.size() - 1)]
+	state = "playing"
+	pick_litter_kind(String(entry["kind"]))
+
+func close_pickup_select() -> void:
+	if state != "pickup_select":
+		return
+	state = "playing"
+	message_timer = 0.0
+
 func search_bottle_source() -> void:
 	if state != "playing" or level_kind != "surface":
 		return
@@ -664,7 +810,15 @@ func search_bottle_source() -> void:
 	var found_message := "You find " + str(found_bottles) + " empty bottles"
 	if String(source["kind"]) == "dustbin":
 		found_message = "You sift through leaves and find " + str(found_bottles) + " empty bottles"
-	message = found_message + " — " + str(bottle_count) + " / " + str(LIFE_JACKET_BOTTLES)
+	elif String(source["kind"]) == "bag":
+		found_message = "You untie the trash bag and find " + str(found_bottles) + " empty bottles"
+	elif String(source["kind"]) == "compost":
+		found_message = "You dig through the compost and find " + str(found_bottles) + " empty bottles"
+	var item_pool: Array = SOURCE_ITEMS.get(source_kind, [])
+	if not item_pool.is_empty():
+		var found_item := String(item_pool[random.randi_range(0, item_pool.size() - 1)])
+		found_message += " and " + String(ITEM_PHRASES[found_item])
+	message = found_message + " — " + str(total_collected_items()) + " / " + str(LIFE_JACKET_BOTTLES)
 	message_timer = 2.8
 	spawn_burst(source_position, safe_color, 10)
 	add_shake(0.16)
@@ -674,10 +828,6 @@ func open_craft_table() -> void:
 		return
 	craft_slots.clear()
 	craft_selected = 0
-	for index in range(bottle_sources.size()):
-		if craft_element_available(index) > 0:
-			craft_selected = index
-			break
 	state = "crafting"
 	message_timer = 0.0
 
@@ -688,16 +838,45 @@ func close_craft_table() -> void:
 	state = "playing"
 	message_timer = 0.0
 
-func craft_element_available(index: int) -> int:
-	if index < 0 or index >= bottle_sources.size():
+func craft_element_count() -> int:
+	return bottle_sources.size() + ITEM_ORDER.size()
+
+func craft_element_kind(element_index: int) -> String:
+	if element_index < bottle_sources.size():
+		return String(bottle_sources[element_index]["kind"])
+	return String(ITEM_ORDER[element_index - bottle_sources.size()])
+
+func craft_element_inventory(element_index: int) -> Dictionary:
+	return bottle_inventory if element_index < bottle_sources.size() else item_inventory
+
+func craft_element_available(element_index: int) -> int:
+	if element_index < 0 or element_index >= craft_element_count():
 		return 0
-	var source: Dictionary = bottle_sources[index]
-	var kind := String(source["kind"])
+	var inventory := craft_element_inventory(element_index)
+	var kind := craft_element_kind(element_index)
 	var reserved := 0
 	for slot in craft_slots:
-		if slot == index:
+		if slot == element_index:
 			reserved += 1
-	return maxi(0, int(bottle_inventory.get(kind, 0)) - reserved)
+	return maxi(0, int(inventory.get(kind, 0)) - reserved)
+
+func craft_visible_elements() -> Array:
+	var visible: Array = []
+	for element_index in range(craft_element_count()):
+		var inventory := craft_element_inventory(element_index)
+		var kind := craft_element_kind(element_index)
+		if int(inventory.get(kind, 0)) > 0 or craft_slots.has(element_index):
+			visible.append(element_index)
+	return visible
+
+func total_collected_items() -> int:
+	var total := bottle_count
+	for value in item_inventory.values():
+		total += int(value)
+	return total
+
+func clamp_craft_selection() -> void:
+	craft_selected = clampi(craft_selected, 0, maxi(0, craft_visible_elements().size() - 1))
 
 func add_craft_element() -> void:
 	if state != "crafting":
@@ -707,20 +886,27 @@ func add_craft_element() -> void:
 		message_timer = 2.0
 		return
 	if craft_slots.size() >= LIFE_JACKET_BOTTLES:
-		message = "The jacket already has eight bottles"
+		message = "The jacket already has eight items"
 		message_timer = 2.0
 		return
-	if craft_element_available(craft_selected) <= 0:
-		message = "No bottles left in that element"
+	var visible := craft_visible_elements()
+	if visible.is_empty():
+		message = "Nothing collected yet — search garbage with F"
 		message_timer = 2.0
 		return
-	craft_slots.append(craft_selected)
+	var element_index: int = visible[clampi(craft_selected, 0, visible.size() - 1)]
+	if craft_element_available(element_index) <= 0:
+		message = "No items left in that element"
+		message_timer = 2.0
+		return
+	craft_slots.append(element_index)
 	message_timer = 0.0
 
 func remove_last_craft_element() -> void:
 	if state != "crafting" or craft_slots.is_empty():
 		return
 	craft_slots.pop_back()
+	clamp_craft_selection()
 	message_timer = 0.0
 
 func combine_craft_elements() -> void:
@@ -732,14 +918,17 @@ func combine_craft_elements() -> void:
 		message_timer = 2.0
 		return
 	if craft_slots.size() < LIFE_JACKET_BOTTLES:
-		message = "Add " + str(LIFE_JACKET_BOTTLES - craft_slots.size()) + " more empty bottles"
+		message = "Add " + str(LIFE_JACKET_BOTTLES - craft_slots.size()) + " more items"
 		message_timer = 2.0
 		return
+	var bottles_used := 0
 	for slot in craft_slots:
-		var source: Dictionary = bottle_sources[slot]
-		var kind := String(source["kind"])
-		bottle_inventory[kind] = maxi(0, int(bottle_inventory.get(kind, 0)) - 1)
-	bottle_count = maxi(0, bottle_count - LIFE_JACKET_BOTTLES)
+		var inventory := craft_element_inventory(slot)
+		var kind := craft_element_kind(slot)
+		inventory[kind] = maxi(0, int(inventory.get(kind, 0)) - 1)
+		if slot < bottle_sources.size():
+			bottles_used += 1
+	bottle_count = maxi(0, bottle_count - bottles_used)
 	has_life_jacket = true
 	life_jacket_on_ground = false
 	craft_slots.clear()
@@ -787,13 +976,7 @@ func update_surface_level() -> void:
 	if state != "playing":
 		return
 	var exit_position := Vector2(exit_cell) + Vector2(0.5, 0.5)
-	if player_position.distance_to(exit_position) >= 0.56:
-		return
-	if not has_life_jacket and message_timer <= 0.0:
-		message = "The river is too deep — find a life jacket"
-		message_timer = 2.4
-		return
-	if has_life_jacket:
+	if player_position.distance_to(exit_position) < 0.56:
 		load_level(level_index + 1)
 
 func spawn_burst(position: Vector2, color: Color, count := 8) -> void:
@@ -868,11 +1051,26 @@ func _unhandled_input(event: InputEvent) -> void:
 				confirm_level_selection()
 			elif keycode == KEY_ESCAPE or keycode == KEY_L:
 				close_level_select()
-		elif state == "crafting":
+		elif state == "pickup_select":
+			var pickup_entry_count := pickable_litter_entries().size()
 			if keycode == KEY_UP or keycode == KEY_W:
-				craft_selected = posmod(craft_selected - 1, bottle_sources.size())
+				if pickup_entry_count > 0:
+					pickup_selected = posmod(pickup_selected - 1, pickup_entry_count)
 			elif keycode == KEY_DOWN or keycode == KEY_S:
-				craft_selected = posmod(craft_selected + 1, bottle_sources.size())
+				if pickup_entry_count > 0:
+					pickup_selected = posmod(pickup_selected + 1, pickup_entry_count)
+			elif keycode == KEY_ENTER or keycode == KEY_KP_ENTER or keycode == KEY_SPACE:
+				confirm_pickup_selection()
+			elif keycode == KEY_ESCAPE or keycode == KEY_B or keycode == KEY_F:
+				close_pickup_select()
+		elif state == "crafting":
+			var craft_visible_count := craft_visible_elements().size()
+			if keycode == KEY_UP or keycode == KEY_W:
+				if craft_visible_count > 0:
+					craft_selected = posmod(craft_selected - 1, craft_visible_count)
+			elif keycode == KEY_DOWN or keycode == KEY_S:
+				if craft_visible_count > 0:
+					craft_selected = posmod(craft_selected + 1, craft_visible_count)
 			elif keycode == KEY_SPACE:
 				add_craft_element()
 			elif keycode == KEY_ENTER or keycode == KEY_KP_ENTER:
@@ -885,7 +1083,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				close_craft_table()
 		else:
 			if level_kind == "surface" and keycode == KEY_F:
-				search_bottle_source()
+				try_pick_litter()
 			elif level_kind == "surface" and keycode == KEY_B:
 				open_craft_table()
 			elif level_kind == "surface" and keycode == KEY_G:
@@ -1147,6 +1345,12 @@ func draw_depth_sorted() -> void:
 			"kind": "source",
 			"source": source,
 		})
+	for item in litter:
+		drawables.append({
+			"depth": iso_to_screen(item["position"]).y,
+			"kind": "litter",
+			"item": item,
+		})
 	drawables.append({
 		"depth": iso_to_screen(Vector2(exit_cell) + Vector2(0.5, 0.5)).y,
 		"kind": "exit" if level_kind == "surface" else "gate",
@@ -1179,6 +1383,9 @@ func draw_depth_sorted() -> void:
 			"source":
 				var source: Dictionary = drawable["source"]
 				draw_bottle_source(source)
+			"litter":
+				var item: Dictionary = drawable["item"]
+				draw_litter_item(item)
 			"exit":
 				draw_surface_exit()
 			"gate":
@@ -1255,6 +1462,52 @@ func draw_bottle_source(source: Dictionary) -> void:
 				position + Vector2(0, 18),
 				position + Vector2(-11, 0),
 			]), safe_color)
+	elif kind == "bag":
+		for index in range(1 + charges):
+			draw_bottle(position + Vector2(-14.0 + float(index) * 14.0, -45.0 - float(index % 2) * 6.0), 0.7, safe_color)
+		var bag_body := PackedVector2Array([
+			position + Vector2(-27, 17),
+			position + Vector2(-29, -10),
+			position + Vector2(-15, -24),
+			position + Vector2(0, -26),
+			position + Vector2(16, -23),
+			position + Vector2(28, -6),
+			position + Vector2(24, 18),
+			position + Vector2(-2, 21),
+		])
+		draw_colored_polygon(bag_body, ink_soft_color.darkened(0.34))
+		draw_colored_polygon(PackedVector2Array([
+			bag_body[1],
+			bag_body[2],
+			bag_body[3],
+			position + Vector2(0, -8),
+			position + Vector2(-14, -2),
+		]), ink_soft_color.darkened(0.14))
+		draw_line(position + Vector2(-8, -33), position + Vector2(8, -33), ink_color, 3.0)
+		draw_polyline(PackedVector2Array([bag_body[0], bag_body[1], bag_body[2], bag_body[3], bag_body[4], bag_body[5], bag_body[6], bag_body[7], bag_body[0]]), ink_color, 1.5, true)
+	elif kind == "compost":
+		var mound := PackedVector2Array([
+			position + Vector2(-34, 2),
+			position + Vector2(-20, -18),
+			position + Vector2(0, -24),
+			position + Vector2(20, -18),
+			position + Vector2(33, 3),
+			position + Vector2(16, 19),
+			position + Vector2(-16, 19),
+		])
+		draw_colored_polygon(mound, floor_plum_color.darkened(0.2))
+		draw_colored_polygon(PackedVector2Array([
+			position + Vector2(0, -24),
+			position + Vector2(20, -18),
+			position + Vector2(33, 3),
+			position + Vector2(16, 19),
+		]), floor_plum_color)
+		draw_polyline(PackedVector2Array([mound[0], mound[1], mound[2], mound[3], mound[4], mound[5], mound[6], mound[0]]), ink_color, 1.5, true)
+		for index in range(1 + charges):
+			draw_bottle(position + Vector2(-10.0 + float(index) * 20.0, -36.0 - float(index % 2) * 5.0), 0.72, safe_color)
+		for index in range(6 + charges * 2):
+			var leaf_position := position + Vector2(-27.0 + float(index) * 10.0, -15.0 + float(index % 3) * 9.0)
+			draw_leaf(leaf_position, 0.7 + float(index % 3) * 0.08, accent_color if index % 3 == 0 else floor_petrol_color)
 	else:
 		var crate_color := floor_plum_color if kind == "crate" else muted_color
 		draw_colored_polygon(PackedVector2Array([
@@ -1287,13 +1540,104 @@ func draw_bottle_source(source: Dictionary) -> void:
 				position + Vector2(32, -19),
 				position + Vector2(0, 1),
 			]), paper_color)
+	draw_litter(position, kind)
 	var source_position := Vector2(cell) + Vector2(0.5, 0.5)
-	if charges > 0 and player_position.distance_to(source_position) <= SOURCE_REACH:
+	if charges > 0 and player_position.distance_to(source_position) <= SOURCE_REACH and nearest_litter_index() < 0:
 		var prompt := Rect2(position + Vector2(-47, -79), Vector2(94, 23))
 		draw_rect(Rect2(prompt.position + Vector2(3, 4), prompt.size), Color(0.0, 0.0, 0.0, 0.2), true)
 		draw_rect(prompt, Color(void_color, 0.9), true)
 		draw_line(prompt.position, prompt.position + Vector2(prompt.size.x, 0), accent_color, 1.5)
 		draw_string(ui_font, prompt.position + Vector2(12, 16), "F  SEARCH", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, paper_color)
+
+func draw_litter_item(item: Dictionary) -> void:
+	var position := iso_to_screen(item["position"])
+	var bob := sin(elapsed * 3.0 + float(item["phase"])) * 2.0
+	draw_shadow(position, 11.0, 0.26)
+	match String(item["kind"]):
+		"leaves":
+			draw_leaf(position + Vector2(-3, -5 + bob), 0.5, floor_petrol_color)
+			draw_leaf(position + Vector2(5, -3 - bob), 0.42, accent_color)
+		"plastic wrapper":
+			draw_plastic_wrapper(position + Vector2(0, -4 + bob))
+		"rope":
+			draw_rope_coil(position + Vector2(0, -3 + bob))
+		"wood scrap":
+			draw_wood_scrap(position + Vector2(0, -4 + bob))
+		"coiled spring":
+			draw_spring(position + Vector2(0, -6 + bob))
+	var nearest := nearest_litter_index()
+	if nearest >= 0 and litter[nearest]["position"].is_equal_approx(item["position"]):
+		var prompt := Rect2(position + Vector2(-75, -100), Vector2(150, 44))
+		draw_rect(Rect2(prompt.position + Vector2(3, 4), prompt.size), Color(0.0, 0.0, 0.0, 0.2), true)
+		draw_rect(prompt, Color(void_color, 0.92), true)
+		draw_line(prompt.position, prompt.position + Vector2(prompt.size.x, 0), safe_color, 1.5)
+		draw_string(ui_font, prompt.position + Vector2(16, 18), String(item["kind"]).to_upper(), HORIZONTAL_ALIGNMENT_LEFT, -1, 13, paper_color)
+		draw_string(ui_font, prompt.position + Vector2(16, 36), "F  PICK UP", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, muted_color)
+
+func draw_litter(position: Vector2, kind: String) -> void:
+	var variety := posmod(kind.hash(), 2147483647)
+	for index in range(2):
+		var point := position + Vector2(
+			-32.0 + float(posmod(variety + index * 23, 65)),
+			6.0 + float(posmod(variety / 7 + index * 13, 15))
+		)
+		match posmod(variety + index * 3, 4):
+			0:
+				draw_plastic_wrapper(point)
+			1:
+				draw_rope_coil(point)
+			2:
+				draw_wood_scrap(point)
+			_:
+				draw_spring(point)
+
+func draw_item_icon(kind: String, center: Vector2) -> void:
+	match kind:
+		"leaves":
+			draw_leaf(center + Vector2(-3, 0), 0.4, floor_petrol_color)
+			draw_leaf(center + Vector2(4, 1), 0.32, accent_color)
+		"plastic wrapper":
+			draw_plastic_wrapper(center)
+		"rope":
+			draw_rope_coil(center)
+		"wood scrap":
+			draw_wood_scrap(center)
+		_:
+			draw_spring(center)
+
+func draw_plastic_wrapper(center: Vector2) -> void:
+	var points := PackedVector2Array([
+		center + Vector2(-6, -4),
+		center + Vector2(2, -6),
+		center + Vector2(7, -1),
+		center + Vector2(4, 5),
+		center + Vector2(-3, 4),
+		center + Vector2(-7, 1),
+	])
+	draw_colored_polygon(points, Color(muted_color, 0.9).lightened(0.15))
+	draw_polyline(PackedVector2Array([points[0], points[1], points[2], points[3], points[4], points[5], points[0]]), ink_color, 1.0, true)
+	draw_line(center + Vector2(-3, -2), center + Vector2(3, 1), Color(paper_color, 0.5), 1.0)
+
+func draw_rope_coil(center: Vector2) -> void:
+	draw_arc(center, 6.0, 0.0, TAU, 14, floor_plum_color.darkened(0.12), 2.2, true)
+	draw_arc(center, 3.2, 0.0, TAU, 10, floor_plum_color.darkened(0.3), 1.6, true)
+
+func draw_wood_scrap(center: Vector2) -> void:
+	var points := PackedVector2Array([
+		center + Vector2(-10, -2),
+		center + Vector2(9, -2),
+		center + Vector2(10, 2),
+		center + Vector2(-9, 2),
+	])
+	draw_colored_polygon(points, floor_plum_color.darkened(0.22))
+	draw_polyline(PackedVector2Array([points[0], points[1], points[2], points[3], points[0]]), ink_color, 1.0, true)
+	draw_line(center + Vector2(-5, 0), center + Vector2(5, 0), ink_color, 1.0)
+
+func draw_spring(center: Vector2) -> void:
+	var points := PackedVector2Array()
+	for index in range(5):
+		points.append(center + Vector2(-5.0 if index % 2 == 0 else 5.0, -8.0 + index * 4.0))
+	draw_polyline(points, muted_color.lightened(0.25), 2.0, true)
 
 func draw_bottle(center: Vector2, scale: float, color: Color) -> void:
 	var body := PackedVector2Array([
@@ -1329,7 +1673,7 @@ func draw_leaf(center: Vector2, scale: float, color: Color) -> void:
 
 func draw_surface_exit() -> void:
 	var position := iso_to_screen(Vector2(exit_cell) + Vector2(0.5, 0.5))
-	var glow := safe_color if has_life_jacket else gate_color
+	var glow := safe_color
 	draw_shadow(position, 42.0, 0.34)
 	draw_colored_polygon(PackedVector2Array([
 		position + Vector2(-43, 18),
@@ -1345,7 +1689,7 @@ func draw_surface_exit() -> void:
 		position + Vector2(0, -52),
 		position + Vector2(24, -31),
 		position + Vector2(28, 16),
-	]), Color(glow, 0.22 + (0.08 if has_life_jacket else 0.0)))
+	]), Color(glow, 0.3))
 	draw_colored_polygon(PackedVector2Array([
 		position + Vector2(-18, 16),
 		position + Vector2(-15, -28),
@@ -1666,19 +2010,48 @@ func draw_level_select(viewport: Vector2) -> void:
 	var footer := "W / S or arrows select     ENTER / SPACE play     L / ESC close"
 	draw_string(ui_font, Vector2(0, 632), footer, HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 14, muted_color)
 
-func craft_element_label(index: int) -> String:
-	var source: Dictionary = bottle_sources[index]
-	match String(source["kind"]):
-		"dustbin":
-			return "GARBAGE BOTTLES"
-		"recycling":
-			return "RECYCLED BOTTLES"
-		"crate":
-			return "RETURNED BOTTLES"
-		"cooler":
-			return "COOLER BOTTLES"
-		_:
-			return "EMPTY BOTTLES"
+func craft_element_label(element_index: int) -> String:
+	if element_index < bottle_sources.size():
+		var source: Dictionary = bottle_sources[element_index]
+		match String(source["kind"]):
+			"dustbin":
+				return "GARBAGE BOTTLES"
+			"recycling":
+				return "RECYCLED BOTTLES"
+			"crate":
+				return "RETURNED BOTTLES"
+			"cooler":
+				return "COOLER BOTTLES"
+			"bag":
+				return "TRASH BAG BOTTLES"
+			"compost":
+				return "COMPOST BOTTLES"
+			_:
+				return "EMPTY BOTTLES"
+	return String(ITEM_LABELS.get(craft_element_kind(element_index), "ITEMS"))
+
+func draw_pickup_select(viewport: Vector2) -> void:
+	draw_rect(Rect2(Vector2.ZERO, viewport), Color(void_color, 0.82), true)
+	var panel := Rect2(330, 150, 620, 340)
+	draw_rect(Rect2(panel.position + Vector2(7, 9), panel.size), Color(0.0, 0.0, 0.0, 0.34), true)
+	draw_rect(panel, Color(void_color, 0.98), true)
+	draw_line(panel.position, panel.position + Vector2(panel.size.x, 0), safe_color, 2.0)
+	draw_line(panel.position + Vector2(0, panel.size.y), panel.position + panel.size, Color(safe_color, 0.35), 1.0)
+	draw_string(ui_font, Vector2(0, 104), "CHOOSE ITEM", HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 40, paper_color)
+	draw_string(ui_font, Vector2(0, 138), "Several items are nearby", HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 16, muted_color)
+	var entries := pickable_litter_entries()
+	for row_index in range(entries.size()):
+		var entry: Dictionary = entries[row_index]
+		var selected := row_index == pickup_selected
+		var row := Rect2(370, 196 + row_index * 56, 540, 44)
+		var row_color := accent_color if selected else safe_color
+		draw_rect(Rect2(row.position + Vector2(4, 5), row.size), Color(0.0, 0.0, 0.0, 0.24), true)
+		draw_rect(row, Color(ink_color, 0.96) if not selected else Color(void_color, 0.98), true)
+		draw_line(row.position, row.position + Vector2(row.size.x, 0), row_color if selected else Color(muted_color, 0.3), 2.0 if selected else 1.0)
+		draw_item_icon(String(entry["kind"]), row.position + Vector2(26, 28))
+		draw_string(ui_font, row.position + Vector2(52, 29), String(entry["kind"]).to_upper(), HORIZONTAL_ALIGNMENT_LEFT, -1, 15, paper_color if selected else muted_color)
+		draw_string(ui_font, row.position + Vector2(0, 29), "×%02d" % int(entry["count"]), HORIZONTAL_ALIGNMENT_RIGHT, row.size.x - 16, 15, row_color)
+	draw_string(ui_font, Vector2(0, 472), "W / S select     ENTER / SPACE pick up     ESC / B close", HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 14, muted_color)
 
 func draw_craft_table(viewport: Vector2) -> void:
 	draw_rect(Rect2(Vector2.ZERO, viewport), Color(void_color, 0.82), true)
@@ -1688,19 +2061,28 @@ func draw_craft_table(viewport: Vector2) -> void:
 	draw_line(panel.position, panel.position + Vector2(panel.size.x, 0), accent_color, 2.0)
 	draw_line(panel.position + Vector2(0, panel.size.y), panel.position + panel.size, Color(accent_color, 0.35), 1.0)
 	draw_string(ui_font, Vector2(0, 100), "CRAFTING TABLE", HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 34, paper_color)
-	draw_string(ui_font, Vector2(0, 132), "SELECT EMPTY BOTTLES  •  BUILD A FLOTATION JACKET", HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 14, muted_color)
+	draw_string(ui_font, Vector2(0, 132), "SELECT COLLECTED ITEMS  •  BUILD A FLOTATION JACKET", HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 14, muted_color)
 	draw_line(Vector2(270, 158), Vector2(1010, 158), Color(slate_light_color, 0.45), 1.0)
 	draw_string(ui_font, Vector2(278, 193), "ELEMENT SOURCES", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted_color)
-	for index in range(bottle_sources.size()):
-		var row := Rect2(278, 210 + index * 64, 350, 50)
-		var selected := index == craft_selected
-		var row_color := accent_color if selected else safe_color
-		draw_rect(Rect2(row.position + Vector2(4, 5), row.size), Color(0.0, 0.0, 0.0, 0.24), true)
-		draw_rect(row, Color(ink_color, 0.96) if not selected else Color(void_color, 0.98), true)
-		draw_line(row.position, row.position + Vector2(row.size.x, 0), row_color if selected else Color(muted_color, 0.3), 2.0 if selected else 1.0)
-		draw_bottle(row.position + Vector2(28, 31), 0.52, row_color)
-		draw_string(ui_font, row.position + Vector2(54, 30), craft_element_label(index), HORIZONTAL_ALIGNMENT_LEFT, -1, 13, paper_color if selected else muted_color)
-		draw_string(ui_font, row.position + Vector2(0, 31), "×%02d" % craft_element_available(index), HORIZONTAL_ALIGNMENT_RIGHT, row.size.x - 14, 16, row_color)
+	var visible_elements := craft_visible_elements()
+	if visible_elements.is_empty():
+		draw_string(ui_font, Vector2(278, 252), "NOTHING COLLECTED YET", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, paper_color)
+		draw_string(ui_font, Vector2(278, 280), "SEARCH GARBAGE WITH F TO FIND ITEMS", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted_color)
+	else:
+		for row_index in range(visible_elements.size()):
+			var element_index: int = visible_elements[row_index]
+			var row := Rect2(278 + (row_index % 2) * 368, 210 + (row_index / 2) * 52, 350, 50)
+			var selected := row_index == craft_selected
+			var row_color := accent_color if selected else safe_color
+			draw_rect(Rect2(row.position + Vector2(4, 5), row.size), Color(0.0, 0.0, 0.0, 0.24), true)
+			draw_rect(row, Color(ink_color, 0.96) if not selected else Color(void_color, 0.98), true)
+			draw_line(row.position, row.position + Vector2(row.size.x, 0), row_color if selected else Color(muted_color, 0.3), 2.0 if selected else 1.0)
+			if element_index < bottle_sources.size():
+				draw_bottle(row.position + Vector2(28, 31), 0.52, row_color)
+			else:
+				draw_item_icon(craft_element_kind(element_index), row.position + Vector2(22, 31))
+			draw_string(ui_font, row.position + Vector2(54, 30), craft_element_label(element_index), HORIZONTAL_ALIGNMENT_LEFT, -1, 13, paper_color if selected else muted_color)
+			draw_string(ui_font, row.position + Vector2(0, 31), "×%02d" % craft_element_available(element_index), HORIZONTAL_ALIGNMENT_RIGHT, row.size.x - 14, 16, row_color)
 	draw_string(ui_font, Vector2(676, 193), "JACKET BUILD", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted_color)
 	for index in range(LIFE_JACKET_BOTTLES):
 		var column := index % 4
@@ -1712,13 +2094,13 @@ func draw_craft_table(viewport: Vector2) -> void:
 		draw_polyline(PackedVector2Array([slot.position, slot.position + Vector2(slot.size.x, 0), slot.position + slot.size, slot.position + Vector2(0, slot.size.y), slot.position]), slot_color, 1.5, true)
 		if index < craft_slots.size():
 			draw_bottle(slot.get_center() + Vector2(0, 8), 0.78, safe_color)
-	var progress_text := str(craft_slots.size()) + " / " + str(LIFE_JACKET_BOTTLES) + " EMPTY BOTTLES"
+	var progress_text := str(craft_slots.size()) + " / " + str(LIFE_JACKET_BOTTLES) + " ITEMS"
 	var progress_color := safe_color if craft_slots.size() >= LIFE_JACKET_BOTTLES else accent_color
 	draw_string(ui_font, Vector2(676, 420), progress_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, progress_color)
 	if has_life_jacket:
-		draw_string(ui_font, Vector2(676, 456), "LIFE JACKET COMPLETE", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, safe_color)
+		draw_string(ui_font, Vector2(676, 456), "LIFE JACKET — WEARING (G TO DROP)", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, safe_color)
 	elif life_jacket_on_ground:
-		var dropped_hint := "DROPPED ON GROUND" if player_position.distance_to(life_jacket_position) > 0.85 else "PRESS E TO EQUIP"
+		var dropped_hint := "LIFE JACKET ON GROUND — E TO WEAR" if player_position.distance_to(life_jacket_position) > 0.85 else "PRESS E TO WEAR"
 		draw_string(ui_font, Vector2(676, 456), dropped_hint, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, accent_color)
 	elif craft_slots.size() >= LIFE_JACKET_BOTTLES:
 		draw_string(ui_font, Vector2(676, 456), "PRESS ENTER TO COMBINE", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, paper_color)
@@ -1735,6 +2117,9 @@ func draw_hud(viewport: Vector2) -> void:
 	if state == "level_select":
 		draw_level_select(viewport)
 		return
+	if state == "pickup_select":
+		draw_pickup_select(viewport)
+		return
 	if state == "crafting":
 		draw_craft_table(viewport)
 		return
@@ -1743,7 +2128,7 @@ func draw_hud(viewport: Vector2) -> void:
 	draw_string(ui_font, Vector2(50, 57), title, HORIZONTAL_ALIGNMENT_LEFT, -1, 30, paper_color)
 	var level_text := "LEVEL 00 / %02d  •  %s" % [LEVELS.size(), level_name] if level_kind == "surface" else "DEPTH %02d / %02d  •  %s" % [level_index, LEVELS.size() - 1, level_name]
 	draw_string(ui_font, Vector2(51, 83), level_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, accent_color)
-	var shard_rect := Rect2(viewport.x - 244, 24, 214, 76)
+	var shard_rect := Rect2(viewport.x - 244, 24, 214, 100) if level_kind == "surface" else Rect2(viewport.x - 244, 24, 214, 76)
 	if level_kind == "surface":
 		draw_bottle_plaque(shard_rect)
 	else:
@@ -1764,7 +2149,7 @@ func draw_hud(viewport: Vector2) -> void:
 			draw_hud_diamond(center, 10.0, danger_color.lightened(0.08))
 		else:
 			draw_hud_diamond(center, 10.0, Color(muted_color, 0.2))
-	var controls := "WASD MOVE  F SEARCH  B TABLE  G DROP/TAKE  DRAG PAN  WHEEL ZOOM  Q/E YAW  C RESET  L LEVELS  R RESTART" if level_kind == "surface" else "WASD MOVE  SPACE STRIKE  DRAG PAN  WHEEL ZOOM  Q/E YAW  C RESET  L LEVELS  R RESTART"
+	var controls := "WASD MOVE  F SEARCH/PICK  B TABLE  G WEAR/DROP  DRAG PAN  WHEEL ZOOM  Q/E YAW  C RESET  L LEVELS  R RESTART" if level_kind == "surface" else "WASD MOVE  SPACE STRIKE  DRAG PAN  WHEEL ZOOM  Q/E YAW  C RESET  L LEVELS  R RESTART"
 	var controls_size := ui_font.get_string_size(controls, HORIZONTAL_ALIGNMENT_LEFT, -1, 13)
 	var controls_rect := Rect2(viewport.x - controls_size.x - 68, viewport.y - 54, controls_size.x + 38, 30)
 	draw_plaque(controls_rect, slate_light_color)
@@ -1782,14 +2167,18 @@ func draw_bottle_plaque(rect: Rect2) -> void:
 	draw_line(rect.position + Vector2(94, 17), rect.position + Vector2(94, 59), Color(muted_color, 0.4), 1.0)
 	draw_string(ui_font, rect.position + Vector2(108, 29), "JACKET", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, muted_color)
 	var jacket_color := safe_color if has_life_jacket else accent_color
-	var jacket_text := str(LIFE_JACKET_BOTTLES - bottle_count) + " MORE"
-	if bottle_count >= LIFE_JACKET_BOTTLES:
+	var jacket_text := str(maxi(0, LIFE_JACKET_BOTTLES - total_collected_items())) + " MORE"
+	if total_collected_items() >= LIFE_JACKET_BOTTLES:
 		jacket_text = "CAN CRAFT"
 	if life_jacket_on_ground:
 		jacket_text = "DROPPED"
 	if has_life_jacket:
-		jacket_text = "READY"
+		jacket_text = "WEARING"
 	draw_string(ui_font, rect.position + Vector2(108, 55), jacket_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, jacket_color)
+	draw_line(rect.position + Vector2(18, 72), rect.position + Vector2(rect.size.x - 18, 72), Color(muted_color, 0.4), 1.0)
+	draw_leaf(rect.position + Vector2(29, 88), 0.55, floor_petrol_color)
+	draw_string(ui_font, rect.position + Vector2(47, 92), "%02d" % total_collected_items(), HORIZONTAL_ALIGNMENT_LEFT, -1, 20, paper_color)
+	draw_string(ui_font, rect.position + Vector2(108, 88), "ITEMS", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, muted_color)
 
 func draw_plaque(rect: Rect2, accent: Color) -> void:
 	draw_rect(Rect2(rect.position + Vector2(5, 7), rect.size), Color(0.0, 0.0, 0.0, 0.25), true)
