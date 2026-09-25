@@ -248,6 +248,52 @@ const LEVELS := [
 		"paper": "f3edff",
 		"muted": "a9a6cf",
 	},
+	{
+		"name": "JUNGLE",
+		"kind": "surface",
+		"theme": "jungle",
+		"map": [
+			"######################",
+			"#.MMMMMMMMMMMMM.FFFF.#",
+			"#.MMMMMMMMMMMMM.FFFF.#",
+			"#..MMMMMMMM.MM..FFFF.#",
+			"#...............~~~~.#",
+			"#...............~~~~.#",
+			"#...............~~~~.#",
+			"#...............~~~~.#",
+			"#...............~~~~.#",
+			"#...............~~~~.#",
+			"#...............~~~~.#",
+			"#...............~~~~.#",
+			"#...............~~~~.#",
+			"######################",
+		],
+		"shards": [],
+		"spawns": [],
+		"trees": [Vector2i(3, 6), Vector2i(5, 4), Vector2i(7, 5), Vector2i(11, 6), Vector2i(13, 5), Vector2i(4, 9), Vector2i(6, 8), Vector2i(8, 9), Vector2i(10, 8), Vector2i(12, 9), Vector2i(14, 6), Vector2i(2, 8), Vector2i(5, 11), Vector2i(9, 11), Vector2i(13, 9)],
+		"spirits": [],
+		"start": Vector2i(2, 11),
+		"exit": Vector2i(10, 5),
+		"void": "08150f",
+		"deep": "0e2417",
+		"ink": "143520",
+		"ink_soft": "1d4a2b",
+		"wall_alt": "2a5c33",
+		"slate": "2e6a39",
+		"slate_light": "3f8148",
+		"floor_mist": "477f3f",
+		"floor_petrol": "67a052",
+		"floor_plum": "9ab85f",
+		"soil": "7a5a33",
+		"accent": "f2c14e",
+		"safe": "46d6c4",
+		"danger": "d0554f",
+		"enemy": "d0554f",
+		"enemy_accent": "f2c14e",
+		"gate": "5f7a3a",
+		"paper": "f4f1d8",
+		"muted": "b8c99a",
+	},
 ]
 
 const PLAYER_PIXELS_CHARS := "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -745,6 +791,8 @@ var slate_light_color := Color("364765")
 var floor_mist_color := Color("303a54")
 var floor_petrol_color := Color("294654")
 var floor_plum_color := Color("40344f")
+var floor_soil_color := Color("5a4126")
+var level_theme := ""
 var accent_color := Color("f0ad4e")
 var safe_color := Color("6de5df")
 var danger_color := Color("c04a5d")
@@ -853,6 +901,7 @@ func load_level(index: int) -> void:
 	var level: Dictionary = LEVELS[level_index]
 	level_name = String(level["name"])
 	level_kind = String(level.get("kind", "dungeon"))
+	level_theme = String(level.get("theme", ""))
 	var rows: Array = level["map"]
 	map_rows = rows
 	var configured_shards: Array = level["shards"]
@@ -1013,6 +1062,7 @@ func apply_level_colors(level: Dictionary) -> void:
 	floor_mist_color = Color(String(level["floor_mist"]))
 	floor_petrol_color = Color(String(level["floor_petrol"]))
 	floor_plum_color = Color(String(level["floor_plum"]))
+	floor_soil_color = Color(String(level.get("soil", level["floor_plum"])))
 	accent_color = Color(String(level["accent"]))
 	safe_color = Color(String(level["safe"]))
 	danger_color = Color(String(level["danger"]))
@@ -1032,7 +1082,7 @@ func build_walkable() -> void:
 			var cell := Vector2i(x, y)
 			if row[x] != "#" and row[x] != "M":
 				walkable[cell] = true
-			if row[x] == "~":
+			if row[x] == "~" or row[x] == "F":
 				water_cells[cell] = true
 
 func _process(delta: float) -> void:
@@ -1595,7 +1645,12 @@ func update_surface_level() -> void:
 		return
 	var exit_position := Vector2(exit_cell) + Vector2(0.5, 0.5)
 	if player_position.distance_to(exit_position) < 0.56:
-		load_level(level_index + 1)
+		if level_index < LEVELS.size() - 1:
+			load_level(level_index + 1)
+		else:
+			state = "won"
+			message = "You reached the hidden jungle"
+			message_timer = 99.0
 
 func spawn_burst(position: Vector2, color: Color, count := 8) -> void:
 	effects.append({
@@ -1736,6 +1791,10 @@ func player_face_name() -> String:
 	return "nw" if facing.y < 0.0 else "sw"
 
 func floor_color(cell: Vector2i) -> Color:
+	if level_theme == "jungle":
+		var soil_seed := posmod(cell.x * 131 + cell.y * 197 + cell.x * cell.y * 7, 100)
+		if soil_seed < 24:
+			return floor_soil_color
 	var value := posmod(cell.x * 3 + cell.y * 5 + cell.x * cell.y, 5)
 	match value:
 		0:
@@ -1870,22 +1929,52 @@ func draw_floors() -> void:
 			diamond[2],
 		]), base.darkened(0.04))
 		draw_polyline(diamond, Color(ink_color, 0.35), 1.0, true)
-		if level_kind == "surface" and grass_on_cell(cell):
-			draw_grass_tuft(cell, center)
+		if level_kind == "surface":
+			if grass_on_cell(cell):
+				draw_grass_tuft(cell, center)
+			if flower_on_cell(cell):
+				draw_flower(center, flower_color(cell), flower_scale(cell))
 
 
 
 func grass_on_cell(cell: Vector2i) -> bool:
 	var h := (cell.x * 73856093) ^ (cell.y * 19349663) ^ (level_index * 83492791)
-	return level_kind == "surface" and ((h & 0x7fffffff) % 100) < 27
+	var threshold := 40 if level_theme == "jungle" else 27
+	return level_kind == "surface" and ((h & 0x7fffffff) % 100) < threshold
+
+func flower_on_cell(cell: Vector2i) -> bool:
+	var h := (cell.x * 271) ^ (cell.y * 457) ^ (level_index * 119)
+	var threshold := 16 if level_theme == "jungle" else 8
+	return level_kind == "surface" and ((h & 0x7fffffff) % 100) < threshold and grass_on_cell(cell)
+
+func flower_color(cell: Vector2i) -> Color:
+	var h := (cell.x * 13 + cell.y * 7) % 4
+	match h:
+		0:
+			return danger_color.lightened(0.35)
+		1:
+			return accent_color
+		2:
+			return safe_color.darkened(0.2)
+		_:
+			return Color("d8a1e0")
+
+func flower_scale(cell: Vector2i) -> float:
+	var h := (cell.x * 91 + cell.y * 53) % 7
+	return 0.8 + float(h) / 6.0 * 0.6
 
 func draw_grass_tuft(cell: Vector2i, center: Vector2) -> void:
 	var h := (cell.x * 92821) ^ (cell.y * 68917)
 	var blade_color := wall_alt_color
 	var tip_color := slate_light_color
+	var kind := (h & 0xff) % 3
 	for b in range(3):
 		var sx := float((h >> (b * 4)) & 0x3) * 4.0 - 4.0
 		var height := 12.0 + float((h >> (b * 5)) & 0x7) * 1.6
+		if kind == 1:
+			height *= 1.5
+		elif kind == 2:
+			height *= 0.8
 		var sway := sin(elapsed * 1.6 + float(b) + float((h & 0xff) % 7)) * 1.4
 		var base := center + Vector2(sx, 7.0)
 		var tip := base + Vector2(sway, -height)
@@ -1893,6 +1982,13 @@ func draw_grass_tuft(cell: Vector2i, center: Vector2) -> void:
 		draw_line(base, tip, tip_color, 0.8)
 	draw_line(center + Vector2(-2, 7), center + Vector2(-2, -8), blade_color.darkened(0.18), 1.4)
 	draw_line(center + Vector2(2, 7), center + Vector2(3, -8), blade_color.darkened(0.18), 1.4)
+	# add a couple of broad leafy blades for the lush variants
+	if level_theme == "jungle":
+		for b in range(2):
+			var bx := float((h >> (b * 3)) & 0x3) * 3.0 - 3.0
+			var bh := 18.0 + float((h >> (b * 2)) & 0x5) * 2.0
+			var tipp := center + Vector2(bx + sin(elapsed * 1.8 + float(b)) * 1.2, -bh)
+			draw_line(center + Vector2(bx, 7.0), tipp, tip_color, 1.8)
 
 func draw_spirit(spirit: Dictionary) -> void:
 	var pos := iso_to_screen(spirit["position"])
@@ -1966,7 +2062,42 @@ func draw_tree(cell: Vector2i) -> void:
 		position + Vector2(-1, -32),
 	]), accent_color)
 
+func is_fall_cell(cell: Vector2i) -> bool:
+	if cell.y < 0 or cell.y >= map_rows.size():
+		return false
+	var row: String = map_rows[cell.y]
+	if cell.x < 0 or cell.x >= row.length():
+		return false
+	return row[cell.x] == "F"
+
+func draw_waterfall(cell: Vector2i, center: Vector2, diamond: PackedVector2Array) -> void:
+	var water := safe_color.darkened(0.28)
+	draw_colored_polygon(diamond, water)
+	draw_colored_polygon(PackedVector2Array([center, diamond[1], diamond[2]]), water.lightened(0.06))
+	draw_colored_polygon(PackedVector2Array([center, diamond[3], diamond[2]]), water.darkened(0.08))
+	# falling streaks
+	var d := fposmod(elapsed * 26.0 + float(cell.y) * 9.0, 16.0) - 8.0
+	for i in range(3):
+		var x := -24.0 + float(i) * 22.0
+		draw_line(center + Vector2(x, -18.0 + d), center + Vector2(x, 14.0 + d), Color(paper_color, 0.55), 2.0)
+	draw_line(center + Vector2(-30, 16), center + Vector2(30, 16), Color(paper_color, 0.6), 2.5)
+	draw_polyline(diamond, Color(safe_color.lightened(0.24), 0.5), 1.2, true)
+
+func draw_flower(center: Vector2, color: Color, scale: float) -> void:
+	var c := center + Vector2(0, -4.0)
+	var petals := color
+	var heart := accent_color
+	for i in range(5):
+		var ang := TAU * float(i) / 5.0
+		var p := c + Vector2(cos(ang), sin(ang)) * 5.0 * scale
+		draw_circle(p, 2.4 * scale, petals)
+	draw_line(center + Vector2(0, 7.0), c, Color(wall_alt_color, 0.9), 1.2)
+	draw_circle(c, 2.2 * scale, heart)
+
 func draw_river_tile(cell: Vector2i, center: Vector2, diamond: PackedVector2Array) -> void:
+	if is_fall_cell(cell):
+		draw_waterfall(cell, center, diamond)
+		return
 	var water := safe_color.darkened(0.38)
 	draw_colored_polygon(diamond, water)
 	draw_colored_polygon(PackedVector2Array([center, diamond[1], diamond[2]]), water.lightened(0.05))
@@ -2852,8 +2983,9 @@ func draw_level_select(viewport: Vector2) -> void:
 		draw_hud_diamond(row.position + Vector2(32, 34), 12.0 if selected else 8.0, row_color if selected else Color(muted_color, 0.45))
 		draw_string(ui_font, row.position + Vector2(62, 27), "%02d" % index, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, row_color)
 		draw_string(ui_font, row.position + Vector2(112, 31), String(level["name"]), HORIZONTAL_ALIGNMENT_LEFT, -1, 22, paper_color if selected else muted_color)
-		var detail := "RIVER CROSSING" if surface_level else enemy_display_name(String(level["enemy_kind"]))
-		var summary := "BOTTLES  •  CRAFT  •  RIVER" if surface_level else "3 SHARDS  •  5 ENEMIES"
+		var jungle_level := surface_level and String(level.get("theme", "")) == "jungle"
+		var detail := "JUNGLE" if jungle_level else ("RIVER CROSSING" if surface_level else enemy_display_name(String(level["enemy_kind"])))
+		var summary := "WATERFALL  •  EXPLORE" if jungle_level else ("BOTTLES  •  CRAFT  •  RIVER" if surface_level else "3 SHARDS  •  5 ENEMIES")
 		draw_string(ui_font, row.position + Vector2(112, 52), detail, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, row_color if selected else muted_color)
 		draw_string(ui_font, row.position + Vector2(600, 40), summary, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, row_color if selected else muted_color)
 	var footer := "W / S or arrows select     ENTER / SPACE play     L / ESC close"

@@ -19,7 +19,7 @@ func run_test() -> void:
 	if game.selected_level != 1:
 		quit(1)
 		return
-	game.move_level_selection(4)
+	game.move_level_selection(game.LEVELS.size() - 1)
 	if game.selected_level != 0:
 		quit(1)
 		return
@@ -72,8 +72,8 @@ func run_test() -> void:
 	if game.has_method("draw_player") == false or game.has_method("draw_pixel_sprite") == false:
 		quit(1)
 		return
-	for level_index in range(5):
-		var valid := validate_surface_level() if level_index == 0 else validate_dungeon_level(level_index)
+	for level_index in range(6):
+		var valid := validate_surface_level() if level_index == 0 else (validate_jungle_level() if level_index == game.LEVELS.size() - 1 else validate_dungeon_level(level_index))
 		if not valid:
 			quit(1)
 			return
@@ -101,6 +101,11 @@ func run_test() -> void:
 	game.shards_collected = game.shard_cells.size()
 	game.player_position = Vector2(game.exit_cell) + Vector2(0.5, 0.5)
 	game.collect_shards()
+	if game.level_index != game.LEVELS.size() - 1 or game.state != "playing":
+		quit(1)
+		return
+	game.player_position = Vector2(game.exit_cell) + Vector2(0.5, 0.5)
+	game.update_surface_level()
 	if game.state != "won":
 		quit(1)
 		return
@@ -406,6 +411,45 @@ func validate_surface_level() -> bool:
 	game.update_surface_level()
 	return game.level_index == 1 and game.level_name == "FACETED DEPTHS"
 
+
+func validate_jungle_level() -> bool:
+	game.load_level(game.LEVELS.size() - 1)
+	if game.level_index != game.LEVELS.size() - 1 or game.level_kind != "surface" or game.level_theme != "jungle" or game.map_rows.size() != 14:
+		return false
+	if game.walkable.is_empty() or game.flow.size() != game.walkable.size():
+		return false
+	if not game.walkable.has(game.start_cell) or not game.flow.has(game.start_cell):
+		return false
+	if not game.walkable.has(game.exit_cell) or not game.flow.has(game.exit_cell):
+		return false
+	for row in game.map_rows:
+		if String(row).length() != 22:
+			return false
+	# River is 4 tiles wide (cols 16-19) with a waterfall ('F') at its head.
+	var has_fall := false
+	for y in range(1, game.map_rows.size() - 1):
+		if not game.water_cells.has(Vector2i(16, y)) or not game.water_cells.has(Vector2i(17, y)) or not game.water_cells.has(Vector2i(18, y)) or not game.water_cells.has(Vector2i(19, y)):
+			return false
+		if game.water_cells.has(Vector2i(15, y)) or game.water_cells.has(Vector2i(20, y)):
+			return false
+	for c in game.water_cells:
+		var cell: Vector2i = c
+		if game.is_fall_cell(cell):
+			has_fall = true
+	if not has_fall:
+		return false
+	# Lush terrain is kept reachable: items scatter on the bank.
+	if game.litter.size() < 20:
+		return false
+	# Solid trees on land, off water.
+	if game.tree_cells.size() < 8:
+		return false
+	for tree_cell: Vector2i in game.tree_cells:
+		if not game.walkable.has(tree_cell) or game.water_cells.has(tree_cell):
+			return false
+		if game.can_occupy(Vector2(tree_cell) + Vector2(0.5, 0.5), 0.22):
+			return false
+	return true
 
 func validate_dungeon_level(index: int) -> bool:
 	game.load_level(index)
