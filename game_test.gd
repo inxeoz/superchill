@@ -226,6 +226,14 @@ func validate_surface_level() -> bool:
 	# No item spawns on the player's start tile.
 	if seen_cells.has(game.start_cell):
 		return false
+	# Trees are solid landmarks on land, and never on water or the exit tile.
+	if game.tree_cells.size() < 2:
+		return false
+	for tree_cell: Vector2i in game.tree_cells:
+		if not game.walkable.has(tree_cell) or game.water_cells.has(tree_cell) or seen_cells.has(tree_cell):
+			return false
+		if game.can_occupy(Vector2(tree_cell) + Vector2(0.5, 0.5), 0.22):
+			return false
 	# Water is impassable without the jacket.
 	var water_position := Vector2(6.5, 4.5)
 	if game.can_occupy(water_position, 0.22):

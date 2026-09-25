@@ -28,6 +28,9 @@ const ITEM_PLURALS := {
 	"empty bottle": "empty bottles",
 }
 const DEFAULT_CAMERA_ZOOM := 1.08
+const CAMERA_ZOOM_MIN := 0.55
+const CAMERA_ZOOM_MAX := 2.2
+const CAMERA_ZOOM_STEP := 0.1
 const CAMERA_FOLLOW_RATE := 2.4
 const LEVELS := [
 	{
@@ -48,6 +51,7 @@ const LEVELS := [
 		],
 		"shards": [],
 		"spawns": [],
+		"trees": [Vector2i(2, 2), Vector2i(5, 6), Vector2i(9, 2), Vector2i(12, 5)],
 		"start": Vector2i(1, 7),
 		"exit": Vector2i(14, 1),
 		"void": "102f3a",
@@ -777,6 +781,7 @@ var random := RandomNumberGenerator.new()
 var map_rows: Array = []
 var shard_cells: Array = []
 var enemy_spawns: Array = []
+var tree_cells: Array = []
 var start_cell := Vector2i.ZERO
 var exit_cell := Vector2i.ZERO
 var level_index := 0
@@ -831,6 +836,7 @@ func load_level(index: int) -> void:
 	shard_cells = configured_shards
 	var configured_spawns: Array = level["spawns"]
 	enemy_spawns = configured_spawns
+	tree_cells = level.get("trees", [])
 	start_cell = Vector2i(level["start"])
 	exit_cell = Vector2i(level["exit"])
 	enemy_kind = String(level.get("enemy_kind", "shardling"))
@@ -875,6 +881,8 @@ func load_level(index: int) -> void:
 	item_inventory.clear()
 	bottle_inventory.clear()
 	solid_cells.clear()
+	for tree_cell in tree_cells:
+		solid_cells[tree_cell] = true
 	effects.clear()
 	craft_selected = 0
 	craft_slots.clear()
@@ -927,11 +935,11 @@ func distribute_surface_items() -> void:
 	var candidates: Array = []
 	while not queue.is_empty():
 		var current: Vector2i = queue.pop_front()
-		if walkable.has(current) and not water_cells.has(current) and current != start_cell:
+		if walkable.has(current) and not water_cells.has(current) and not solid_cells.has(current) and current != start_cell:
 			candidates.append(current)
 		for direction in directions:
 			var neighbor: Vector2i = current + direction
-			if walkable.has(neighbor) and not water_cells.has(neighbor) and not seen.has(neighbor):
+			if walkable.has(neighbor) and not water_cells.has(neighbor) and not solid_cells.has(neighbor) and not seen.has(neighbor):
 				seen[neighbor] = true
 				queue.append(neighbor)
 	# Random layout: one item per cell, blended kinds.
@@ -1546,9 +1554,9 @@ func handle_camera_button(event: InputEventMouseButton) -> void:
 		camera_drag_origin = event.position
 		camera_drag_start = camera_offset
 	elif event.pressed and event.button_index == MOUSE_BUTTON_WHEEL_UP:
-		camera_zoom = clampf(camera_zoom + 0.08, 0.65, 1.35)
+		camera_zoom = clampf(camera_zoom + CAMERA_ZOOM_STEP, CAMERA_ZOOM_MIN, CAMERA_ZOOM_MAX)
 	elif event.pressed and event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-		camera_zoom = clampf(camera_zoom - 0.08, 0.65, 1.35)
+		camera_zoom = clampf(camera_zoom - CAMERA_ZOOM_STEP, CAMERA_ZOOM_MIN, CAMERA_ZOOM_MAX)
 
 func handle_camera_motion(event: InputEventMouseMotion) -> void:
 	if state == "playing" and camera_dragging:
@@ -1779,8 +1787,69 @@ func draw_floors() -> void:
 			diamond[2],
 		]), base.darkened(0.04))
 		draw_polyline(diamond, Color(ink_color, 0.35), 1.0, true)
+		if level_kind == "surface" and grass_on_cell(cell):
+			draw_grass_tuft(cell, center)
 
 
+
+func grass_on_cell(cell: Vector2i) -> bool:
+	var h := (cell.x * 73856093) ^ (cell.y * 19349663) ^ (level_index * 83492791)
+	return level_kind == "surface" and ((h & 0x7fffffff) % 100) < 27
+
+func draw_grass_tuft(cell: Vector2i, center: Vector2) -> void:
+	var h := (cell.x * 92821) ^ (cell.y * 68917)
+	var blade_color := wall_alt_color
+	var tip_color := slate_light_color
+	for b in range(3):
+		var sx := float((h >> (b * 4)) & 0x3) * 4.0 - 4.0
+		var height := 12.0 + float((h >> (b * 5)) & 0x7) * 1.6
+		var sway := sin(elapsed * 1.6 + float(b) + float((h & 0xff) % 7)) * 1.4
+		var base := center + Vector2(sx, 7.0)
+		var tip := base + Vector2(sway, -height)
+		draw_line(base, tip, blade_color, 1.6)
+		draw_line(base, tip, tip_color, 0.8)
+	draw_line(center + Vector2(-2, 7), center + Vector2(-2, -8), blade_color.darkened(0.18), 1.4)
+	draw_line(center + Vector2(2, 7), center + Vector2(3, -8), blade_color.darkened(0.18), 1.4)
+
+func draw_tree(cell: Vector2i) -> void:
+	var position := iso_to_screen(Vector2(cell) + Vector2(0.5, 0.5))
+	draw_shadow(position, 30.0, 0.34)
+	var trunk := gate_color.darkened(0.18)
+	draw_colored_polygon(PackedVector2Array([
+		position + Vector2(-8, 9),
+		position + Vector2(-4, -26),
+		position + Vector2(4, -26),
+		position + Vector2(8, 9),
+	]), trunk)
+	draw_polyline(PackedVector2Array([
+		position + Vector2(-8, 9),
+		position + Vector2(-4, -26),
+		position + Vector2(4, -26),
+		position + Vector2(8, 9),
+		position + Vector2(-8, 9),
+	]), ink_color, 1.2)
+	var canopy := floor_petrol_color
+	var canopy_dark := wall_alt_color
+	var canopy_light := slate_light_color
+	var blob := PackedVector2Array([
+		position + Vector2(0, -50),
+		position + Vector2(25, -31),
+		position + Vector2(17, 1),
+		position + Vector2(-17, 1),
+		position + Vector2(-25, -31),
+	])
+	draw_colored_polygon(blob, canopy)
+	draw_colored_polygon(PackedVector2Array([blob[0], blob[1], position + Vector2(0, -30)]), canopy_light)
+	draw_colored_polygon(PackedVector2Array([blob[3], blob[4], position + Vector2(0, -30)]), canopy.darkened(0.09))
+	draw_colored_polygon(PackedVector2Array([blob[1], blob[2], position + Vector2(0, -30)]), canopy_dark)
+	draw_polyline(blob, ink_color, 1.4)
+	# small berry accent
+	draw_colored_polygon(PackedVector2Array([
+		position + Vector2(-4, -38),
+		position + Vector2(1, -42),
+		position + Vector2(4, -36),
+		position + Vector2(-1, -32),
+	]), accent_color)
 
 func draw_river_tile(cell: Vector2i, center: Vector2, diamond: PackedVector2Array) -> void:
 	var water := safe_color.darkened(0.38)
@@ -1879,6 +1948,12 @@ func draw_depth_sorted() -> void:
 			"kind": "litter",
 			"item": item,
 		})
+	for tree_cell in tree_cells:
+		drawables.append({
+			"depth": iso_to_screen(Vector2(tree_cell) + Vector2(0.5, 0.5)).y,
+			"kind": "tree",
+			"cell": tree_cell,
+		})
 	drawables.append({
 		"depth": iso_to_screen(Vector2(exit_cell) + Vector2(0.5, 0.5)).y,
 		"kind": "exit" if level_kind == "surface" else "gate",
@@ -1914,6 +1989,9 @@ func draw_depth_sorted() -> void:
 			"litter":
 				var item: Dictionary = drawable["item"]
 				draw_litter_item(item)
+			"tree":
+				var tree_cell: Vector2i = drawable["cell"]
+				draw_tree(tree_cell)
 			"exit":
 				draw_surface_exit()
 			"gate":
