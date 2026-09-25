@@ -64,6 +64,10 @@ func run_test() -> void:
 		quit(1)
 		return
 	game.reset_camera()
+	if not await validate_attack_and_jump():
+		quit(1)
+		return
+	game.reset_camera()
 	if not validate_wall_faces():
 		quit(1)
 		return
@@ -170,6 +174,48 @@ func validate_player_facing() -> bool:
 			game.player_facing = Vector2(inp.x + inp.y, inp.y - inp.x).normalized().rotated(-game.camera_angle)
 			if game.player_face_name() != String(expected[key]):
 				return false
+	return true
+
+func validate_attack_and_jump() -> bool:
+	# Level 0 is a surface level: the blade strike must be allowed there, and
+	# Space must jump rather than strike.
+	game.load_level(0)
+	if game.level_kind != "surface":
+		return false
+	# Direct strike works on a surface level.
+	game.attack_cooldown = 0.0
+	var before: int = game.effects.size()
+	game.attack()
+	if game.effects.size() != before + 1 or String(game.effects[game.effects.size() - 1]["kind"]) != "slash":
+		return false
+	# Enter routes to attack() in the playing state (all levels).
+	var before2: int = game.effects.size()
+	game.attack_cooldown = 0.0
+	var enter_event := InputEventKey.new()
+	enter_event.physical_keycode = KEY_ENTER
+	enter_event.keycode = KEY_ENTER
+	enter_event.pressed = true
+	game._unhandled_input(enter_event)
+	if game.effects.size() != before2 + 1:
+		return false
+	# Space triggers jump on a surface level.
+	game.player_jumping = false
+	var space_down := InputEventKey.new()
+	space_down.physical_keycode = KEY_SPACE
+	space_down.keycode = KEY_SPACE
+	space_down.pressed = true
+	Input.parse_input_event(space_down)
+	await process_frame
+	game.player_jumping = false
+	game.update_player(0.25)
+	if not game.player_jumping:
+		return false
+	var space_up := InputEventKey.new()
+	space_up.physical_keycode = KEY_SPACE
+	space_up.keycode = KEY_SPACE
+	space_up.pressed = false
+	Input.parse_input_event(space_up)
+	await process_frame
 	return true
 
 func validate_wall_faces() -> bool:

@@ -1142,8 +1142,6 @@ func update_player(delta: float) -> void:
 	if level_kind == "surface" and state == "playing" and not player_jumping and Input.is_physical_key_pressed(KEY_SPACE):
 		player_jumping = true
 		player_jump_time = 0.0
-	if level_kind != "surface" and Input.is_physical_key_pressed(KEY_SPACE):
-		attack()
 
 func move_with_collisions(current: Vector2, movement: Vector2, radius: float) -> Vector2:
 	var candidate := current + movement
@@ -1784,6 +1782,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				open_craft_table()
 			elif level_kind == "surface" and keycode == KEY_G:
 				toggle_life_jacket()
+			elif keycode == KEY_ENTER or keycode == KEY_KP_ENTER:
+				attack()
 			elif keycode == KEY_Q:
 				camera_angle = clampf(camera_angle + deg_to_rad(15.0), -PI, PI)
 			elif keycode == KEY_E:
@@ -3231,7 +3231,7 @@ func draw_hud(viewport: Vector2) -> void:
 			draw_hud_diamond(center, 10.0, danger_color.lightened(0.08))
 		else:
 			draw_hud_diamond(center, 10.0, Color(muted_color, 0.2))
-	var controls := "WASD MOVE  SHIFT RUN  SPACE JUMP  F SEARCH/PICK  B TABLE  G WEAR/DROP  L LEVELS  R RESTART" if level_kind == "surface" else "WASD MOVE  SPACE STRIKE  DRAG PAN  WHEEL ZOOM  Q/E YAW  C RESET  L LEVELS  R RESTART"
+	var controls := "WASD MOVE  SHIFT RUN  SPACE JUMP  ENTER STRIKE  F SEARCH/PICK  B TABLE  G WEAR/DROP  L LEVELS  R RESTART" if level_kind == "surface" else "WASD MOVE  ENTER STRIKE  DRAG PAN  WHEEL ZOOM  Q/E YAW  C RESET  L LEVELS  R RESTART"
 	var controls_size := ui_font.get_string_size(controls, HORIZONTAL_ALIGNMENT_LEFT, -1, 13)
 	var controls_rect := Rect2(viewport.x - controls_size.x - 68, viewport.y - 54, controls_size.x + 38, 30)
 	draw_plaque(controls_rect, slate_light_color)
@@ -3261,12 +3261,14 @@ func draw_bottle_plaque(rect: Rect2) -> void:
 		if total_collected_items() >= LIFE_JACKET_BOTTLES:
 			jacket_text = "CAN CRAFT"
 	elif total_collected_items() >= LIFE_JACKET_BOTTLES:
-		jacket_text = "CAN CRAFT SOMETHING"
+		jacket_text = "CRAFTABLE"
 	draw_string(ui_font, rect.position + Vector2(108, 55), jacket_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, jacket_color)
 	draw_line(rect.position + Vector2(18, 72), rect.position + Vector2(rect.size.x - 18, 72), Color(muted_color, 0.4), 1.0)
 	draw_leaf(rect.position + Vector2(29, 88), 0.55, floor_petrol_color)
-	draw_string(ui_font, rect.position + Vector2(47, 92), "%02d" % total_collected_items(), HORIZONTAL_ALIGNMENT_LEFT, -1, 20, paper_color)
-	draw_string(ui_font, rect.position + Vector2(108, 88), "ITEMS", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, muted_color)
+	var total_text := "%02d" % total_collected_items()
+	draw_string(ui_font, rect.position + Vector2(47, 92), total_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 20, paper_color)
+	var total_w := ui_font.get_string_size(total_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 20).x
+	draw_string(ui_font, rect.position + Vector2(47.0 + total_w + 12.0, 92), "ITEMS", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, muted_color)
 
 func draw_plaque(rect: Rect2, accent: Color) -> void:
 	draw_rect(Rect2(rect.position + Vector2(5, 7), rect.size), Color(0.0, 0.0, 0.0, 0.25), true)
