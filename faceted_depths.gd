@@ -2322,7 +2322,6 @@ func draw_player() -> void:
 	var tint := Color.WHITE
 	if invulnerability > 0.0 and int(elapsed * 18.0) % 2 == 0:
 		tint = Color(1.0, 0.72, 0.76, 0.46)
-	# screen-space forward for lean (matches the facing grid)
 	var fwd := Vector2(1, -1).normalized()
 	match face:
 		"se":
@@ -2332,41 +2331,71 @@ func draw_player() -> void:
 		"nw":
 			fwd = Vector2(-1, -1).normalized()
 	var spring := base
-	# jump: raise the sprite over a parabola, keep shadow grounded
 	if player_jumping:
 		spring.y -= absf(sin(player_jump_time / JUMP_DURATION * PI)) * JUMP_HEIGHT
-	# run: lean forward slightly
 	if player_running and not player_jumping:
 		spring += fwd * 2.0
-	# hurt: quick recoil shake
 	if invulnerability > 0.0:
 		spring.x += sin(invulnerability * 40.0) * 3.0
+	var frame_index := int(walk_animation)
+	var box := player_box_origin(face, frame_index, spring)
 	if face == "nw":
-		draw_pixel_sprite("sword_" + face, spring, tint)
-	draw_pixel_sprite(face, spring, tint)
+		draw_pixel_sprite("sword_" + face, frame_index, box, tint)
+	draw_pixel_sprite(face, frame_index, box, tint)
 	if face != "nw":
-		draw_pixel_sprite("sword_" + face, spring, tint)
+		draw_pixel_sprite("sword_" + face, frame_index, box, tint)
 	if has_life_jacket:
-		draw_life_jacket(spring)
+		# keep the jacket aligned to the grounded body
+		var dy: float = box.y - (spring.y - 90.0)
+		draw_life_jacket(Vector2(spring.x, spring.y + dy))
+
+# Anchor the sprite's boots to the tile centre so the character stands planted
+# on the ground (feet centred horizontally on base.x, sole on base.y).
+func player_box_origin(face: String, frame_index: int, base_position: Vector2) -> Vector2:
+	var frames: Array = PLAYER_PIXELS[face]
+	var frame: Dictionary = frames[frame_index % frames.size()]
+	var ox: int = int(frame["ox"])
+	var oy: int = int(frame["oy"])
+	var rows: Array = frame["rows"]
+	var scale := 2.0
+	var ground_row := 0
+	var min_col := 0
+	var max_col := 0
+	var found := false
+	for r in range(rows.size() - 1, -1, -1):
+		var row: String = String(rows[r])
+		for c in range(row.length()):
+			var ch := row[c]
+			if ch != "." and PLAYER_PIXELS_CHARS.find(ch) >= 0:
+				if not found:
+					ground_row = r
+					min_col = c
+					max_col = c
+					found = true
+				else:
+					min_col = mini(min_col, c)
+					max_col = maxi(max_col, c)
+		if found:
+			break
+	var feet_center := ox + (min_col + max_col + 1) * 0.5
+	return Vector2(base_position.x - feet_center * scale, base_position.y - (oy + ground_row + 1) * scale)
 
 # The original 64x64 pixel sprite (assets/player/isometric) is baked into
 # PLAYER_PIXELS (shared palette + content grids of every walk frame + sword
-# facing). Each opaque pixel draws as a 2x2 rect at the sprite's original
-# screen anchor; transparent-boundary pixels get a soft feather so the
-# silhouette reads smooth/HD instead of hard-stepped.
-func draw_pixel_sprite(art_key: String, position: Vector2, tint: Color) -> void:
+# facing). Each opaque pixel draws as a 2x2 rect inside the 64x64 box origin;
+# transparent-boundary pixels get a soft feather so the silhouette reads
+# smooth/HD instead of hard-stepped.
+func draw_pixel_sprite(art_key: String, frame_index: int, box_origin: Vector2, tint: Color) -> void:
 	var palette: Array = PLAYER_PIXELS["palette"]
 	var frame: Dictionary
 	var art = PLAYER_PIXELS[art_key]
 	if art is Array:
-		var frames: Array = art
-		frame = frames[int(walk_animation) % frames.size()]
+		frame = art[frame_index % art.size()]
 	else:
 		frame = art
 	var ox: int = int(frame["ox"])
 	var oy: int = int(frame["oy"])
 	var rows: Array = frame["rows"]
-	var origin := Vector2(position.x - 64.0, position.y - 90.0)
 	var scale := 2.0
 	var aa := 0.6
 	for r in range(rows.size()):
@@ -2380,9 +2409,8 @@ func draw_pixel_sprite(art_key: String, position: Vector2, tint: Color) -> void:
 				continue
 			var base_c: Color = palette[ci]
 			var draw_color := Color(base_c.r * tint.r, base_c.g * tint.g, base_c.b * tint.b, base_c.a * tint.a)
-			var px := origin + Vector2((ox + c) * scale, (oy + r) * scale)
+			var px := box_origin + Vector2((ox + c) * scale, (oy + r) * scale)
 			draw_rect(Rect2(px, Vector2(scale, scale)), draw_color)
-			# feather steps into transparent neighbours
 			if not pixel_opaque(rows, c, r - 1):
 				draw_rect(Rect2(px.x, px.y - aa, scale, aa), Color(draw_color, draw_color.a * 0.4))
 			if not pixel_opaque(rows, c, r + 1):
