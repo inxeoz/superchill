@@ -3,6 +3,8 @@ extends Node2D
 const TILE_WIDTH := 96.0
 const TILE_HEIGHT := 48.0
 const WALL_HEIGHT := 58.0
+const OCCLUSION_REVEAL_THRESHOLD := 0.45
+const OCCLUSION_WALL_ALPHA := 0.4
 const MAP_ORIGIN := Vector2(640.0, 248.0)
 const CAMERA_PIVOT := Vector2(640.0, 420.0)
 const PLAYER_SPEED := 3.8
@@ -2514,6 +2516,61 @@ func wall_faces(floor: PackedVector2Array, top: PackedVector2Array) -> Array[Pac
 		PackedVector2Array([top[3], top[0], floor[0], floor[3]]),
 	]
 
+func point_in_polygon(poly: PackedVector2Array, p: Vector2) -> bool:
+	var inside := false
+	for i in range(poly.size()):
+		var j := (i + poly.size() - 1) % poly.size()
+		var a: Vector2 = poly[i]
+		var b: Vector2 = poly[j]
+		if ((a.y > p.y) != (b.y > p.y)) and p.x < (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x:
+			inside = not inside
+	return inside
+
+func wall_covers(p: Vector2, floor: PackedVector2Array, top: PackedVector2Array) -> bool:
+	# A screen point is occluded by a wall if it falls inside the wall's drawn
+	# silhouette: the top face or any of the four side faces.
+	if point_in_polygon(top, p):
+		return true
+	for face in wall_faces(floor, top):
+		if point_in_polygon(face, p):
+			return true
+	return false
+
+func compute_player_occlusion(walls: Array) -> Dictionary:
+	# Returns the set of wall cells that hide the player's body by >=85%, so the
+	# caller can draw them translucent and reveal the character behind them.
+	var occluding: Dictionary = {}
+	var rect := player_body_rect()
+	var samples: Array = []
+	for sy in range(9):
+		for sx in range(5):
+			samples.append(Vector2(
+				rect.position.x + rect.size.x * (float(sx) + 0.5) / 5.0,
+				rect.position.y + rect.size.y * (float(sy) + 0.5) / 9.0
+			))
+	var player_depth := iso_to_screen(player_position).y
+	var covered: Dictionary = {}
+	for drawable in walls:
+		if String(drawable["kind"]) != "wall":
+			continue
+		if float(drawable["depth"]) <= player_depth:
+			continue
+		var cell: Vector2i = drawable["cell"]
+		var floor := tile_polygon(cell)
+		var top := tile_polygon(cell, float(drawable["height"]))
+		var hit := false
+		for si in range(samples.size()):
+			if covered.has(si):
+				continue
+			if wall_covers(samples[si], floor, top):
+				covered[si] = cell
+				hit = true
+		if hit:
+			occluding[cell] = true
+	if float(covered.size()) / float(samples.size()) >= OCCLUSION_REVEAL_THRESHOLD:
+		return occluding
+	return {}
+
 func draw_floors() -> void:
 	for key in walkable:
 		var cell: Vector2i = key
@@ -2756,6 +2813,7 @@ func wall_drawables() -> Array[Dictionary]:
 
 func draw_depth_sorted() -> void:
 	var drawables := wall_drawables()
+	var occluding_walls := compute_player_occlusion(drawables)
 	for shard in shards:
 		if not bool(shard["taken"]):
 			drawables.append({
@@ -2830,7 +2888,8 @@ func draw_depth_sorted() -> void:
 		match String(drawable["kind"]):
 			"wall":
 				var wall_cell: Vector2i = drawable["cell"]
-				draw_wall(wall_cell, float(drawable["height"]))
+				var wall_alpha := OCCLUSION_WALL_ALPHA if occluding_walls.has(wall_cell) else 1.0
+				draw_wall(wall_cell, float(drawable["height"]), wall_alpha)
 			"mountain":
 				var mountain_cell: Vector2i = drawable["cell"]
 				draw_mountain(mountain_cell)
@@ -2898,18 +2957,18 @@ func draw_mountain(cell: Vector2i) -> void:
 	draw_polyline(PackedVector2Array([n, e, s, w, n]), ink_color, 1.2)
 	draw_line(n, peak, ink_color, 1.2)
 
-func draw_wall(cell: Vector2i, height := WALL_HEIGHT) -> void:
+func draw_wall(cell: Vector2i, height := WALL_HEIGHT, alpha := 1.0) -> void:
 	if level_kind == "surface":
 		height = minf(height, 32.0)
 	var floor := tile_polygon(cell)
 	var top := tile_polygon(cell, height)
 	var faces := wall_faces(floor, top)
 	var top_color := ink_soft_color if posmod(cell.x + cell.y, 2) == 0 else wall_alt_color
-	draw_colored_polygon(faces[0], ink_color.darkened(0.28))
-	draw_colored_polygon(faces[3], ink_color.darkened(0.08))
-	draw_colored_polygon(faces[1], ink_color.darkened(0.16))
-	draw_colored_polygon(faces[2], ink_color)
-	draw_colored_polygon(top, top_color)
+	draw_colored_polygon(faces[0], Color(ink_color.darkened(0.28), alpha))
+	draw_colored_polygon(faces[3], Color(ink_color.darkened(0.08), alpha))
+	draw_colored_polygon(faces[1], Color(ink_color.darkened(0.16), alpha))
+	draw_colored_polygon(faces[2], Color(ink_color, alpha))
+	draw_colored_polygon(top, Color(top_color, alpha))
 	draw_polyline(top, Color("0a0d18"), 1.2, true)
 
 
@@ -3370,6 +3429,48 @@ func player_box_origin(face: String, frame_index: int, base_position: Vector2) -
 			break
 	var feet_center := ox + (min_col + max_col + 1) * 0.5
 	return Vector2(base_position.x - feet_center * scale, base_position.y - (oy + ground_row + 1) * scale)
+
+func player_body_rect() -> Rect2:
+	# Screen-space rect of the currently visible body (opaque pixels only), so
+	# wall-occlusion is measured against the character's real silhouette.
+	var face := player_face_name()
+	var frames: Array = PLAYER_PIXELS[face]
+	var frame: Dictionary = frames[int(walk_animation) % frames.size()]
+	var ox: int = int(frame["ox"])
+	var oy: int = int(frame["oy"])
+	var rows: Array = frame["rows"]
+	var base := iso_to_screen(player_position)
+	var box := player_box_origin(face, int(walk_animation), base)
+	var scale := 2.0
+	var min_col := 0
+	var max_col := 0
+	var min_row := 0
+	var max_row := 0
+	var found := false
+	for r in range(rows.size()):
+		var row: String = String(rows[r])
+		for c in range(row.length()):
+			var ch := row[c]
+			if ch != "." and PLAYER_PIXELS_CHARS.find(ch) >= 0:
+				if not found:
+					min_col = c
+					min_row = r
+					max_col = c
+					max_row = r
+					found = true
+				else:
+					min_col = mini(min_col, c)
+					max_col = maxi(max_col, c)
+					min_row = mini(min_row, r)
+					max_row = maxi(max_row, r)
+	if not found:
+		return Rect2(base.x - 11.0, base.y - 40.0, 22.0, 40.0)
+	return Rect2(
+		box.x + min_col * scale,
+		box.y + min_row * scale,
+		(max_col - min_col + 1) * scale,
+		(max_row - min_row + 1) * scale
+	)
 
 # The original 64x64 pixel sprite (assets/player/isometric) is baked into
 # PLAYER_PIXELS (shared palette + content grids of every walk frame + sword

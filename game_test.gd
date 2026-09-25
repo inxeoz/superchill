@@ -133,8 +133,23 @@ func run_test() -> void:
 	if not validate_gear_switch():
 		quit(1)
 		return
+	if not validate_occlusion_reveal():
+		quit(1)
+		return
 	print("game_test: ok")
 	quit(0)
+
+func validate_occlusion_reveal() -> bool:
+	game.load_level(1)
+	# The player starts right against the south boundary wall; it must be
+	# flagged as occluding so it renders translucent.
+	var occluding: Dictionary = game.compute_player_occlusion(game.wall_drawables())
+	if occluding.is_empty():
+		return false
+	# Only the front walls hide the player, not the whole boundary.
+	if occluding.size() > 4:
+		return false
+	return true
 
 func validate_shotgun() -> bool:
 	game.load_level(1)
