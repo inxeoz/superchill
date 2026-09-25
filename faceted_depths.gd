@@ -2736,40 +2736,7 @@ func border_cells() -> Dictionary:
 func wall_render_height(cell: Vector2i) -> float:
 	if level_kind == "surface" and border_cells().has(cell):
 		return 16.0
-	if front_boundary_cells().has(cell):
-		return 16.0
 	return WALL_HEIGHT
-
-func front_boundary_cells() -> Dictionary:
-	var normals := [Vector2(1.0, 0.0), Vector2(0.0, 1.0), Vector2(-1.0, 0.0), Vector2(0.0, -1.0)]
-	var depths: Array[float] = []
-	for normal: Vector2 in normals:
-		var rotated := normal.rotated(camera_angle)
-		depths.append((rotated.x + rotated.y) * TILE_HEIGHT * 0.5)
-	var primary := 0
-	for index in range(1, normals.size()):
-		if depths[index] > depths[primary]:
-			primary = index
-	var previous := posmod(primary - 1, normals.size())
-	var next := posmod(primary + 1, normals.size())
-	var secondary := previous if depths[previous] >= depths[next] else next
-	var cells: Dictionary = {}
-	var bottom_row := map_rows.size() - 1
-	var right_column: int = int(map_rows[0].length()) - 1
-	for edge: int in [primary, secondary]:
-		if edge == 0:
-			for y in range(map_rows.size()):
-				cells[Vector2i(right_column, y)] = true
-		elif edge == 1:
-			for x in range(map_rows[bottom_row].length()):
-				cells[Vector2i(x, bottom_row)] = true
-		elif edge == 2:
-			for y in range(map_rows.size()):
-				cells[Vector2i(0, y)] = true
-		else:
-			for x in range(map_rows[0].length()):
-				cells[Vector2i(x, 0)] = true
-	return cells
 
 func wall_drawables() -> Array[Dictionary]:
 	var drawables: Array[Dictionary] = []
