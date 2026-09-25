@@ -265,9 +265,17 @@ func validate_surface_level() -> bool:
 		if seen_spirit_recipes.has(rid):
 			return false
 		seen_spirit_recipes[rid] = true
-	# Water is impassable without the jacket.
+	# Water is enterable, but wading in without a life jacket drowns you.
 	var water_position := Vector2(20.5, 12.5)
-	if game.can_occupy(water_position, 0.22):
+	if not game.can_occupy(water_position, 0.22):
+		return false
+	var health0: int = game.health
+	game.player_position = water_position
+	game.update_drowning(0.5)
+	if game.health != health0 - 1:
+		return false
+	game.update_drowning(1.0)
+	if game.health != health0 - 2:
 		return false
 	# The right bank is reached once a jacket lets you cross.
 	game.player_position = Vector2(game.exit_cell) + Vector2(0.5, 0.5)
@@ -326,15 +334,26 @@ func validate_surface_level() -> bool:
 	game.build_selected()
 	if not game.has_life_jacket or game.state != "playing" or game.bottle_count != 0 or game.life_jacket_on_ground:
 		return false
-	if not game.can_occupy(water_position, 0.22):
+	# With the jacket, wading in the river does not drown you.
+	var health1: int = game.health
+	game.player_position = water_position
+	game.update_drowning(0.5)
+	game.update_drowning(1.0)
+	if game.health != health1:
 		return false
+	game.player_position = Vector2(game.start_cell) + Vector2(0.5, 0.5)
 	# Drop / re-equip the jacket; water is blocked again while it is on the ground.
 	var drop_position: Vector2 = game.player_position
 	game.toggle_life_jacket()
 	if game.has_life_jacket or not game.life_jacket_on_ground or game.life_jacket_position != drop_position:
 		return false
-	if game.can_occupy(water_position, 0.22):
+	# Dropped jacket: the river drowns you again.
+	var health2: int = game.health
+	game.player_position = water_position
+	game.update_drowning(0.5)
+	if game.health != health2 - 1:
 		return false
+	game.player_position = drop_position
 	game.player_position = drop_position + Vector2(2.0, 0.0)
 	game.toggle_life_jacket()
 	if game.has_life_jacket or not game.life_jacket_on_ground:
@@ -347,7 +366,11 @@ func validate_surface_level() -> bool:
 	game.toggle_life_jacket()
 	if not game.has_life_jacket or game.life_jacket_on_ground:
 		return false
-	if not game.can_occupy(water_position, 0.22):
+	# Re-equipped: the river is safe to wade again.
+	var health3: int = game.health
+	game.player_position = water_position
+	game.update_drowning(0.5)
+	if game.health != health3:
 		return false
 	# Jacket is bottles-only: debris (leaves) is not in any recipe, so it cannot help
 	# build; building fails until eight bottles are present.

@@ -839,6 +839,8 @@ var player_jumping := false
 var player_jump_time := 0.0
 const JUMP_DURATION := 0.5
 const JUMP_HEIGHT := 18.0
+const DROWN_INTERVAL := 0.2
+var drown_timer := 0.0
 var invulnerability := 0.0
 var shake_strength := 0.0
 var screen_shake := Vector2.ZERO
@@ -1103,6 +1105,7 @@ func _process(delta: float) -> void:
 		update_player(delta)
 		if level_kind == "surface":
 			update_surface_level()
+			update_drowning(delta)
 		else:
 			update_enemies(delta)
 			collect_shards()
@@ -1123,10 +1126,10 @@ func update_player(delta: float) -> void:
 		).normalized().rotated(-camera_angle)
 		var before_move := player_position
 		player_position = move_with_collisions(player_position, world_direction * PLAYER_SPEED * delta, 0.22)
-		if level_kind == "surface" and not has_life_jacket and player_position == before_move and message_timer <= 0.0:
-			if water_cells.has(cell_at(player_position + world_direction * 0.55)):
-				message = "The river is too deep — find a life jacket"
-				message_timer = 2.4
+		if level_kind == "surface" and not has_life_jacket and water_cells.has(cell_at(player_position)):
+			if drown_timer <= 0.0 or message_timer <= 0.0:
+				message = "You're in deep water — get back or drown!"
+				message_timer = 1.6
 		player_facing = world_direction
 		player_running = Input.is_physical_key_pressed(KEY_SHIFT)
 		walk_animation += delta * (13.0 if player_running else 8.0)
@@ -1161,8 +1164,6 @@ func can_occupy(position: Vector2, radius: float) -> bool:
 		if not walkable.has(cell):
 			return false
 		if solid_cells.has(cell):
-			return false
-		if water_cells.has(cell) and not has_life_jacket:
 			return false
 	return true
 
@@ -1257,6 +1258,29 @@ func hurt_player() -> void:
 	if health <= 0:
 		state = "lost"
 		message = "The depths reclaimed the light"
+		message_timer = 99.0
+
+func update_drowning(delta: float) -> void:
+	if state != "playing" or level_kind != "surface":
+		drown_timer = 0.0
+		return
+	if not has_life_jacket and water_cells.has(cell_at(player_position)):
+		drown_timer += delta
+		if drown_timer >= DROWN_INTERVAL:
+			drown_timer = 0.0
+			drown_damage()
+	else:
+		drown_timer = 0.0
+
+func drown_damage() -> void:
+	if state != "playing":
+		return
+	health = maxi(0, health - 1)
+	spawn_burst(player_position, safe_color, 8)
+	add_shake(0.22)
+	if health <= 0:
+		state = "lost"
+		message = "You drowned in the river"
 		message_timer = 99.0
 
 func collect_shards() -> void:
