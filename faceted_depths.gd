@@ -67,6 +67,10 @@ const LEVELS := [
 		"shards": [],
 		"spawns": [],
 		"trees": [Vector2i(5, 16), Vector2i(9, 18), Vector2i(4, 21), Vector2i(7, 14), Vector2i(25, 16), Vector2i(30, 20), Vector2i(26, 13), Vector2i(31, 15)],
+		"spirits": [
+			{"cell": Vector2i(7, 20), "recipe": "life_jacket"},
+			{"cell": Vector2i(13, 15), "recipe": "fishing_catcher"},
+		],
 		"start": Vector2i(3, 23),
 		"exit": Vector2i(35, 1),
 		"void": "102f3a",
@@ -797,6 +801,9 @@ var map_rows: Array = []
 var shard_cells: Array = []
 var enemy_spawns: Array = []
 var tree_cells: Array = []
+var spirits: Array = []
+var spirit_cells: Dictionary = {}
+var unlocked_ideas: Dictionary = {}
 var start_cell := Vector2i.ZERO
 var exit_cell := Vector2i.ZERO
 var level_index := 0
@@ -823,6 +830,7 @@ func _ready() -> void:
 
 func reset_game() -> void:
 	level_index = 0
+	unlocked_ideas.clear()
 	load_level(level_index)
 
 func open_level_select() -> void:
@@ -892,6 +900,8 @@ func load_level(index: int) -> void:
 	enemies.clear()
 	bottle_sources.clear()
 	litter.clear()
+	spirits.clear()
+	spirit_cells.clear()
 	item_count = 0
 	item_inventory.clear()
 	bottle_inventory.clear()
@@ -907,6 +917,17 @@ func load_level(index: int) -> void:
 			"position": Vector2(cell) + Vector2(0.5, 0.5),
 			"taken": false,
 			"phase": shard_index * 1.7,
+		})
+	spirits.clear()
+	spirit_cells.clear()
+	for spirit_data in level.get("spirits", []):
+		var spirit_cell: Vector2i = spirit_data["cell"]
+		spirit_cells[spirit_cell] = true
+		spirits.append({
+			"position": Vector2(spirit_cell) + Vector2(0.5, 0.5),
+			"recipe": String(spirit_data["recipe"]),
+			"taken": false,
+			"phase": spirits.size() * 1.9,
 		})
 	if level_kind == "surface":
 		distribute_surface_items()
@@ -950,11 +971,11 @@ func distribute_surface_items() -> void:
 	var candidates: Array = []
 	while not queue.is_empty():
 		var current: Vector2i = queue.pop_front()
-		if walkable.has(current) and not water_cells.has(current) and not solid_cells.has(current) and current != start_cell:
+		if walkable.has(current) and not water_cells.has(current) and not solid_cells.has(current) and not spirit_cells.has(current) and current != start_cell:
 			candidates.append(current)
 		for direction in directions:
 			var neighbor: Vector2i = current + direction
-			if walkable.has(neighbor) and not water_cells.has(neighbor) and not solid_cells.has(neighbor) and not seen.has(neighbor):
+			if walkable.has(neighbor) and not water_cells.has(neighbor) and not solid_cells.has(neighbor) and not spirit_cells.has(neighbor) and not seen.has(neighbor):
 				seen[neighbor] = true
 				queue.append(neighbor)
 	# Random layout: one item per cell, blended kinds.
@@ -1286,6 +1307,26 @@ func pick_litter_kind(pick_kind: String) -> int:
 		add_shake(0.1)
 	return picked
 
+func try_collect_spirit() -> bool:
+	if state != "playing" or level_kind != "surface":
+		return false
+	for index in range(spirits.size()):
+		var spirit: Dictionary = spirits[index]
+		if bool(spirit["taken"]):
+			continue
+		if player_position.distance_to(spirit["position"]) > SOURCE_REACH:
+			continue
+		spirit["taken"] = true
+		var recipe_i := recipe_index_for_id(String(spirit["recipe"]))
+		if recipe_i >= 0:
+			unlocked_ideas[String(RECIPES[recipe_i]["id"])] = true
+		message = "You found a spirit — a new idea is unlocked!"
+		message_timer = 2.8
+		spawn_burst(spirit["position"], accent_color, 14)
+		add_shake(0.2)
+		return true
+	return false
+
 func try_pick_litter() -> void:
 	var entries := pickable_litter_entries()
 	if entries.is_empty():
@@ -1406,16 +1447,25 @@ func selected_build_kind() -> String:
 		return ""
 	return craft_build_kind(element_index)
 
+func recipe_index_for_id(id: String) -> int:
+	for index in range(RECIPES.size()):
+		if String(RECIPES[index]["id"]) == id:
+			return index
+	return -1
+
+func is_idea_unlocked(index: int) -> bool:
+	return unlocked_ideas.has(String(RECIPES[index]["id"]))
+
 func recipe_for_build_kind(kind: String) -> int:
 	for index in range(RECIPES.size()):
-		if RECIPES[index]["needs"].has(kind):
+		if RECIPES[index]["needs"].has(kind) and is_idea_unlocked(index):
 			return index
 	return -1
 
 func recipes_for_item(kind: String) -> Array:
 	var found: Array = []
 	for index in range(RECIPES.size()):
-		if RECIPES[index]["needs"].has(kind):
+		if RECIPES[index]["needs"].has(kind) and is_idea_unlocked(index):
 			found.append(index)
 	return found
 
@@ -1463,7 +1513,7 @@ func build_selected() -> void:
 		return
 	refresh_recipe_index()
 	if recipe_index < 0:
-		message = "This material isn't used in a known recipe"
+		message = "You don't know how to use this yet — explore more"
 		message_timer = 2.4
 		return
 	if recipe_built(recipe_index):
@@ -1636,7 +1686,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				close_craft_table()
 		else:
 			if level_kind == "surface" and keycode == KEY_F:
-				try_pick_litter()
+				if not try_collect_spirit():
+					try_pick_litter()
 			elif level_kind == "surface" and keycode == KEY_B:
 				open_craft_table()
 			elif level_kind == "surface" and keycode == KEY_G:
@@ -1830,6 +1881,38 @@ func draw_grass_tuft(cell: Vector2i, center: Vector2) -> void:
 	draw_line(center + Vector2(-2, 7), center + Vector2(-2, -8), blade_color.darkened(0.18), 1.4)
 	draw_line(center + Vector2(2, 7), center + Vector2(3, -8), blade_color.darkened(0.18), 1.4)
 
+func draw_spirit(spirit: Dictionary) -> void:
+	var pos := iso_to_screen(spirit["position"])
+	var bob := sin(elapsed * 2.2 + float(spirit["phase"])) * 4.0
+	var c := pos + Vector2(0, -22.0 + bob)
+	draw_shadow(pos, 10.0, 0.2)
+	var glow := accent_color
+	draw_circle(c, 16.0, Color(glow, 0.10))
+	draw_circle(c, 11.0, Color(glow, 0.14))
+	var s := 16.0
+	var points := PackedVector2Array([
+		c + Vector2(0, -s),
+		c + Vector2(s * 0.28, -s * 0.28),
+		c + Vector2(s, 0),
+		c + Vector2(s * 0.28, s * 0.28),
+		c + Vector2(0, s),
+		c + Vector2(-s * 0.28, s * 0.28),
+		c + Vector2(-s, 0),
+		c + Vector2(-s * 0.28, -s * 0.28),
+	])
+	draw_colored_polygon(points, glow)
+	draw_polyline(points, paper_color.lightened(0.1), 1.5, true)
+	draw_colored_polygon(PackedVector2Array([c + Vector2(0, -s), c + Vector2(s * 0.28, -s * 0.28), c]), paper_color.lightened(0.2))
+	var tw := 0.5 + sin(elapsed * 4.0 + float(spirit["phase"])) * 0.5
+	draw_circle(c + Vector2(5, -6), 1.6 + tw, Color(paper_color, 0.6))
+	if player_position.distance_to(spirit["position"]) <= SOURCE_REACH:
+		var prompt := Rect2(pos + Vector2(-75, -88), Vector2(150, 40))
+		draw_rect(Rect2(prompt.position + Vector2(3, 4), prompt.size), Color(0.0, 0.0, 0.0, 0.2), true)
+		draw_rect(prompt, Color(void_color, 0.92), true)
+		draw_line(prompt.position, prompt.position + Vector2(prompt.size.x, 0), accent_color, 1.5)
+		draw_string(ui_font, prompt.position + Vector2(16, 16), "SPIRIT", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, paper_color)
+		draw_string(ui_font, prompt.position + Vector2(16, 33), "F  COLLECT", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, muted_color)
+
 func draw_tree(cell: Vector2i) -> void:
 	var position := iso_to_screen(Vector2(cell) + Vector2(0.5, 0.5))
 	draw_shadow(position, 30.0, 0.34)
@@ -1973,6 +2056,13 @@ func draw_depth_sorted() -> void:
 			"kind": "tree",
 			"cell": tree_cell,
 		})
+	for spirit in spirits:
+		if not bool(spirit["taken"]):
+			drawables.append({
+				"depth": iso_to_screen(spirit["position"]).y,
+				"kind": "spirit",
+				"spirit": spirit,
+			})
 	drawables.append({
 		"depth": iso_to_screen(Vector2(exit_cell) + Vector2(0.5, 0.5)).y,
 		"kind": "exit" if level_kind == "surface" else "gate",
@@ -2014,6 +2104,9 @@ func draw_depth_sorted() -> void:
 			"tree":
 				var tree_cell: Vector2i = drawable["cell"]
 				draw_tree(tree_cell)
+			"spirit":
+				var spirit: Dictionary = drawable["spirit"]
+				draw_spirit(spirit)
 			"exit":
 				draw_surface_exit()
 			"gate":
@@ -2817,8 +2910,8 @@ func draw_craft_table(viewport: Vector2) -> void:
 	var px := 760.0
 	var py := 258.0
 	if usages.is_empty():
-		draw_string(ui_font, Vector2(px, py), "CAN'T MAKE ANYTHING FROM THIS", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted_color)
-		draw_string(ui_font, Vector2(px, py + 26), "THIS MATERIAL ISN'T USED IN A RECIPE", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, muted_color)
+		draw_string(ui_font, Vector2(px, py), "NEED TO EXPLORE MORE", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted_color)
+		draw_string(ui_font, Vector2(px, py + 26), "THIS MATERIAL ISN'T PART OF ANY IDEA YOU'VE FOUND", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, muted_color)
 	else:
 		var n := usages.size()
 		var plural := "S" if n != 1 else ""

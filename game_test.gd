@@ -237,6 +237,17 @@ func validate_surface_level() -> bool:
 			return false
 		if game.can_occupy(Vector2(tree_cell) + Vector2(0.5, 0.5), 0.22):
 			return false
+	# Spirits (stars) sit on reachable land, off waters/trees/items/start/exit.
+	if game.spirits.size() < 2:
+		return false
+	for spirit: Dictionary in game.spirits:
+		var spirit_cell: Vector2i = game.cell_at(spirit["position"])
+		if not game.walkable.has(spirit_cell) or game.water_cells.has(spirit_cell) or game.solid_cells.has(spirit_cell):
+			return false
+		if seen_cells.has(spirit_cell) or spirit_cell == game.start_cell or spirit_cell == game.exit_cell:
+			return false
+		if not game.can_occupy(spirit["position"], 0.22):
+			return false
 	# Water is impassable without the jacket.
 	var water_position := Vector2(20.5, 12.5)
 	if game.can_occupy(water_position, 0.22):
@@ -247,6 +258,25 @@ func validate_surface_level() -> bool:
 	if game.level_index != 1:
 		return false
 	game.load_level(0)
+	# With no ideas yet, a material cannot be crafted into anything.
+	game.bottle_count = game.LIFE_JACKET_BOTTLES
+	game.open_craft_table()
+	game.craft_selected = 0
+	game.refresh_recipe_index()
+	if game.recipe_index != -1:
+		return false
+	game.build_selected()
+	if game.has_life_jacket or game.state != "crafting" or game.bottle_count != game.LIFE_JACKET_BOTTLES:
+		return false
+	game.close_craft_table()
+	game.bottle_count = 0
+	# Collecting the star spirits unlocks the hidden recipe ideas.
+	for spirit: Dictionary in game.spirits:
+		game.player_position = spirit["position"]
+		if not game.try_collect_spirit():
+			return false
+	if not game.unlocked_ideas.has("life_jacket") or not game.unlocked_ideas.has("fishing_catcher"):
+		return false
 	game.open_craft_table()
 	if game.state != "crafting" or not game.craft_visible_elements().is_empty():
 		return false
