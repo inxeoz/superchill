@@ -2909,9 +2909,11 @@ func draw_craft_table(viewport: Vector2) -> void:
 	var usages := recipes_for_item(sel_kind)
 	var px := 760.0
 	var py := 258.0
-	if usages.is_empty():
+	if sel_kind == "":
+		draw_string(ui_font, Vector2(px, py), "COLLECT MATERIALS FIRST", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted_color)
+	elif usages.is_empty():
 		draw_string(ui_font, Vector2(px, py), "NEED TO EXPLORE MORE", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted_color)
-		draw_string(ui_font, Vector2(px, py + 26), "THIS MATERIAL ISN'T PART OF ANY IDEA YOU'VE FOUND", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, muted_color)
+		draw_string(ui_font, Vector2(px, py + 26), "NO KNOWN IDEA FOR THIS MATERIAL", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, muted_color)
 	else:
 		var n := usages.size()
 		var plural := "S" if n != 1 else ""
