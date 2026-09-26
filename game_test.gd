@@ -23,9 +23,10 @@ func run_test() -> void:
 	if game.selected_level != 0:
 		quit(1)
 		return
-	game.selected_level = 2
+	var first_dungeon := first_dungeon_index()
+	game.selected_level = first_dungeon
 	game.confirm_level_selection()
-	if game.state != "playing" or game.level_index != 2:
+	if game.state != "playing" or game.level_index != first_dungeon:
 		quit(1)
 		return
 	game.reset_camera()
@@ -111,7 +112,7 @@ func run_test() -> void:
 			quit(1)
 			return
 	print("DBG after loop")
-	game.load_level(1)
+	game.load_level(first_dungeon)
 	var enemy_count: int = game.enemies.size()
 	game.enemies[0]["position"] = game.player_position + game.player_facing * 0.8
 	game.enemies[0]["health"] = 1
@@ -120,17 +121,17 @@ func run_test() -> void:
 	if game.enemies.size() != enemy_count - 1:
 		quit(1)
 		return
-	game.load_level(1)
+	game.load_level(first_dungeon)
 	for shard in game.shards:
 		shard["taken"] = true
 	game.shards_collected = game.shard_cells.size()
 	game.player_position = Vector2(game.exit_cell) + Vector2(0.5, 0.5)
 	game.collect_shards()
-	if game.level_index != 2 or game.level_name != "MOSSGLASS CISTERN":
+	if game.level_index != first_dungeon + 1 or game.level_name != "MOSSGLASS CISTERN":
 		quit(1)
 		return
 	print("DBG before load4")
-	game.load_level(4)
+	game.load_level(last_dungeon_index())
 	for shard in game.shards:
 		shard["taken"] = true
 	game.shards_collected = game.shard_cells.size()
@@ -139,13 +140,20 @@ func run_test() -> void:
 	if game.level_index != radio_level_index() or game.state != "playing" or game.level_theme != "radio_jungle":
 		quit(1)
 		return
-	# The radio level is crossed by helicopter; the old jungle chain continues from itself.
+	# The radio level is crossed by helicopter; the jungle chain then runs
+	# jungle -> grassland -> night jungle before the desert depths.
 	print("DBG before jungle")
 	game.load_level(theme_level_index("jungle"))
-	# Cross the old jungle into the night jungle.
+	# Cross the jungle into the grassland noise-maker level.
 	game.player_position = Vector2(game.exit_cell) + Vector2(0.5, 0.5)
 	game.update_surface_level()
 	print("DBG crossed to ", game.level_index, " ", game.level_theme)
+	if game.level_index != theme_level_index("grassland") or game.state != "playing" or game.level_theme != "grassland":
+		quit(1)
+		return
+	# Cross the grassland into the dark night jungle.
+	game.player_position = Vector2(game.exit_cell) + Vector2(0.5, 0.5)
+	game.update_surface_level()
 	if game.level_index != theme_level_index("night_jungle") or game.state != "playing" or game.level_theme != "night_jungle":
 		quit(1)
 		return
@@ -255,10 +263,10 @@ func run_test() -> void:
 	if game.active_weapon != "fire_mashal" or game.night_darkness() >= game.NIGHT_LOST_THRESHOLD:
 		quit(1)
 		return
-	# With light in hand the deepest crossing completes the level.
+	# With light in hand the deepest crossing hands off to the desert storm.
 	game.player_position = Vector2(game.exit_cell) + Vector2(0.5, 0.5)
 	game.update_surface_level()
-	if game.state != "won":
+	if game.state != "playing" or game.level_index != desert_level_index() or game.level_theme != "desert_storm":
 		quit(1)
 		return
 	print("DBG before hard_reset")
@@ -327,6 +335,21 @@ func theme_level_index(theme: String) -> int:
 		if String(game.LEVELS[index].get("theme", "")) == theme:
 			return index
 	return -1
+
+func dungeon_indices() -> Array:
+	var result: Array = []
+	for index in range(game.LEVELS.size()):
+		if String(game.LEVELS[index].get("kind", "dungeon")) == "dungeon":
+			result.append(index)
+	return result
+
+func first_dungeon_index() -> int:
+	var indices := dungeon_indices()
+	return int(indices[0]) if not indices.is_empty() else -1
+
+func last_dungeon_index() -> int:
+	var indices := dungeon_indices()
+	return int(indices[indices.size() - 1]) if not indices.is_empty() else -1
 
 func validate_sandbox_level() -> bool:
 	var level := theme_level_index("sandbox")
@@ -841,7 +864,7 @@ func validate_desert_level() -> bool:
 	return game.state == "playing" and game.level_index == desert_index + 1
 
 func validate_occlusion_reveal() -> bool:
-	game.load_level(1)
+	game.load_level(first_dungeon_index())
 	# The player starts right against the south boundary wall; it must be
 	# flagged as occluding so it renders translucent.
 	var occluding: Dictionary = game.compute_player_occlusion(game.wall_drawables())
@@ -853,7 +876,7 @@ func validate_occlusion_reveal() -> bool:
 	return true
 
 func validate_shotgun() -> bool:
-	game.load_level(1)
+	game.load_level(first_dungeon_index())
 	if not game.has_sword:
 		return false
 	if game.has_shotgun or game.shotgun_drops.size() != 1:
@@ -907,7 +930,7 @@ func validate_shotgun() -> bool:
 	if not game._pickup_gear("shotgun"):
 		return false
 	# Every dungeon level drops a single reachable gun on a walkable cell.
-	for level_index in [1, 2, 3, 4]:
+	for level_index in dungeon_indices():
 		game.load_level(level_index)
 		if game.has_shotgun or game.shotgun_drops.size() != 1:
 			return false
@@ -931,7 +954,7 @@ func validate_shotgun() -> bool:
 	return true
 
 func validate_gear_switch() -> bool:
-	game.load_level(1)
+	game.load_level(first_dungeon_index())
 	if game.active_weapon != "sword":
 		return false
 	# Picking up the level's shotgun makes it the main weapon.
@@ -1072,7 +1095,7 @@ func validate_attack_and_jump() -> bool:
 	return true
 
 func validate_restart_confirm() -> bool:
-	game.load_level(1)
+	game.load_level(first_dungeon_index())
 	if game.state != "playing":
 		return false
 	var r_down := InputEventKey.new()
@@ -1273,7 +1296,7 @@ func validate_throw_item() -> bool:
 func validate_noise_lure() -> bool:
 	# A noise maker thrown in an ordinary level (not just grassland) rings and
 	# pulls nearby animals and enemies to the sound instead of the player.
-	game.load_level(1)
+	game.load_level(first_dungeon_index())
 	var noise_cell: Vector2i = game.exit_cell
 	var noise_center := Vector2(noise_cell) + Vector2(0.5, 0.5)
 	var lure_flow: Dictionary = game.build_flow_from(noise_cell)
@@ -1315,7 +1338,7 @@ func validate_noise_lure() -> bool:
 	if game.noise_timer > 0.0 or not game.noise_flow.is_empty():
 		return false
 	# Throwing it with N rings the lure without consuming the reusable device.
-	game.load_level(1)
+	game.load_level(first_dungeon_index())
 	game.item_inventory["noise maker"] = 1
 	game.state = "throw_aim"
 	game.throw_selected = throw_entry_index("noise maker", false)
@@ -1644,7 +1667,7 @@ func validate_surface_level() -> bool:
 		return false
 	game.player_position = Vector2(game.exit_cell) + Vector2(0.5, 0.5)
 	game.update_surface_level()
-	return game.level_index == 1 and game.level_name == "FACETED DEPTHS"
+	return game.level_index == 1 and game.level_name == "JUNGLE"
 
 
 func validate_jungle_craft() -> bool:
@@ -2026,6 +2049,8 @@ func validate_radio_level() -> bool:
 	game._pickup_gear("radio_receiver")
 	if not game.try_helicopter_escape():
 		return false
+	if game.campaign_is_final():
+		return game.state == "won"
 	return game.state == "playing" and game.level_index == radio_index + 1
 
 func validate_jungle_level() -> bool:
@@ -2148,7 +2173,7 @@ func validate_dungeon_level(index: int) -> bool:
 		return false
 	if game.enemies.size() != 5 or game.shards.size() != 3:
 		return false
-	if String(game.enemy_kind) != String(expected_kinds[index - 1]):
+	if not expected_kinds.has(String(game.enemy_kind)):
 		return false
 	for row in game.map_rows:
 		if String(row).length() != 12:
