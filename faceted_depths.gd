@@ -282,6 +282,7 @@ const LEVELS := [
 		"spawns": [],
 		"trees": [Vector2i(3, 6), Vector2i(5, 4), Vector2i(7, 5), Vector2i(11, 6), Vector2i(13, 5), Vector2i(4, 9), Vector2i(6, 8), Vector2i(8, 9), Vector2i(10, 8), Vector2i(12, 9), Vector2i(14, 6), Vector2i(2, 8), Vector2i(5, 11), Vector2i(9, 11), Vector2i(13, 9)],
 		"axe_cell": Vector2i(3, 11),
+		"shovel_cell": Vector2i(4, 11),
 		"spirits": [
 			{"cell": Vector2i(15, 5), "recipe": "fishing_catcher"},
 			{"cell": Vector2i(12, 10), "recipe": "logs"},
@@ -895,6 +896,54 @@ const PLAYER_PIXELS := {
 		".......0A0",
 		"........0",
 	]},
+	"shovel_ne": {"ox": 24, "oy": 26, "rows": [
+		"..0.......",
+		"..0G0.....",
+		"..0G0.....",
+		"..0G0.....",
+		"..0G0.....",
+		"..0K0.....",
+		".0KKK0....",
+		".KIIIIK0..",
+		".KIIIIK0..",
+		".0000000..",
+	]},
+	"shovel_se": {"ox": 25, "oy": 23, "rows": [
+		"..0.......",
+		"..0G0.....",
+		"..0G0.....",
+		"..0G0.....",
+		"..0G0.....",
+		"..0K0.....",
+		".0KKK0....",
+		".KIIIIK0..",
+		".KIIIIK0..",
+		".0000000..",
+	]},
+	"shovel_sw": {"ox": 17, "oy": 28, "rows": [
+		".......0..",
+		".....0G0..",
+		".....0G0..",
+		".....0G0..",
+		".....0G0..",
+		".....0K0..",
+		"....0KKK0.",
+		"..0KIIIIK.",
+		"..0KIIIIK.",
+		"..0000000.",
+	]},
+	"shovel_nw": {"ox": 30, "oy": 20, "rows": [
+		".......0..",
+		".....0G0..",
+		".....0G0..",
+		".....0G0..",
+		".....0G0..",
+		".....0K0..",
+		"....0KKK0.",
+		"..0KIIIIK.",
+		"..0KIIIIK.",
+		"..0000000.",
+	]},
 }
 
 var void_color := Color("060914")
@@ -953,6 +1002,10 @@ var has_boat := false
 var boat_on_ground := false
 var boat_position := Vector2.ZERO
 var has_fire := false
+var has_shovel := false
+var shovel_on_ground := false
+var shovel_position := Vector2.ZERO
+var dug_cells: Dictionary = {}
 var active_weapon := "sword"
 var drop_selected := 0
 var drop_gear_ids: Array = []
@@ -989,6 +1042,7 @@ const SFX_FILES := {
 	"craft_fail": "ui/ui_008.wav",
 	"equip": "mech/mech_001.wav",
 	"chop": "hit/hit_001.wav",
+	"dig": "hit/hit_001.wav",
 	"jump": "jump/jump_000.wav",
 	"menu_move": "rpg/rpg_menu-move.wav",
 	"menu_confirm": "rpg/rpg_menu-confirm.wav",
@@ -1228,11 +1282,19 @@ func load_level(index: int) -> void:
 	boat_on_ground = false
 	boat_position = Vector2.ZERO
 	has_fire = false
+	has_shovel = false
+	shovel_on_ground = false
+	shovel_position = Vector2.ZERO
+	dug_cells.clear()
 	active_weapon = "sword"
 	var axe_cell: Vector2i = level.get("axe_cell", Vector2i(-1, -1))
 	if axe_cell.x >= 0:
 		axe_on_ground = true
 		axe_position = Vector2(axe_cell) + Vector2(0.5, 0.5)
+	var shovel_cell: Vector2i = level.get("shovel_cell", Vector2i(-1, -1))
+	if shovel_cell.x >= 0:
+		shovel_on_ground = true
+		shovel_position = Vector2(shovel_cell) + Vector2(0.5, 0.5)
 	if level_theme == "jungle":
 		shotgun_drops = find_gun_drop_cells(2)
 	elif level_kind != "surface":
@@ -1345,13 +1407,14 @@ func distribute_surface_items() -> void:
 	var directions := [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]
 	var candidates: Array = []
 	var axe_block := cell_at(axe_position) if axe_on_ground else Vector2i(-1, -1)
+	var shovel_block := cell_at(shovel_position) if shovel_on_ground else Vector2i(-1, -1)
 	while not queue.is_empty():
 		var current: Vector2i = queue.pop_front()
-		if walkable.has(current) and not water_cells.has(current) and not solid_cells.has(current) and not spirit_cells.has(current) and current != start_cell and current != axe_block:
+		if walkable.has(current) and not water_cells.has(current) and not solid_cells.has(current) and not spirit_cells.has(current) and current != start_cell and current != axe_block and current != shovel_block:
 			candidates.append(current)
 		for direction in directions:
 			var neighbor: Vector2i = current + direction
-			if walkable.has(neighbor) and not water_cells.has(neighbor) and not solid_cells.has(neighbor) and not spirit_cells.has(neighbor) and neighbor != axe_block and not seen.has(neighbor):
+			if walkable.has(neighbor) and not water_cells.has(neighbor) and not solid_cells.has(neighbor) and not spirit_cells.has(neighbor) and neighbor != axe_block and neighbor != shovel_block and not seen.has(neighbor):
 				seen[neighbor] = true
 				queue.append(neighbor)
 	# Random layout: one item per cell, blended kinds.
@@ -1448,14 +1511,15 @@ func _remove_nearest_shotgun_drop() -> void:
 		shotgun_drops.remove_at(best_index)
 
 func _recompute_active_weapon() -> void:
-	# Keep the active weapon valid after a drop: fall back to the other held
+	# Keep the active weapon valid after a drop: fall back to the first held
 	# weapon, or clear it when the last weapon is gone.
-	if active_weapon == "sword" and not has_sword:
-		active_weapon = "shotgun" if has_shotgun else ("axe" if has_axe else "")
-	elif active_weapon == "shotgun" and not has_shotgun:
-		active_weapon = "sword" if has_sword else ("axe" if has_axe else "")
-	elif active_weapon == "axe" and not has_axe:
-		active_weapon = "sword" if has_sword else ("shotgun" if has_shotgun else "")
+	if active_weapon != "" and _gear_worn(active_weapon) and _is_weapon(active_weapon):
+		return
+	for id in ["sword", "shotgun", "axe", "shovel"]:
+		if _gear_worn(String(id)):
+			active_weapon = String(id)
+			return
+	active_weapon = ""
 
 func _process(delta: float) -> void:
 	if paused:
@@ -1603,6 +1667,21 @@ func attack() -> void:
 		return
 	if active_weapon == "axe" and has_axe:
 		if try_cut_tree():
+			return
+		attack_cooldown = ATTACK_COOLDOWN
+		effects.append({
+			"kind": "slash",
+			"position": player_position,
+			"direction": player_facing,
+			"age": 0.0,
+			"life": 0.2,
+			"phase": 0.0,
+			"color": accent_color,
+		})
+		_sfx("attack")
+		return
+	if active_weapon == "shovel" and has_shovel:
+		if try_dig_soil():
 			return
 		attack_cooldown = ATTACK_COOLDOWN
 		effects.append({
@@ -1906,6 +1985,39 @@ func try_cut_tree() -> bool:
 	_sfx("chop")
 	return true
 
+func diggable_soil_cell() -> Vector2i:
+	var cell := cell_at(player_position)
+	if not is_soil_cell(cell) or dug_cells.has(cell):
+		return Vector2i(-1, -1)
+	return cell
+
+func try_dig_soil() -> bool:
+	if state != "playing" or level_kind != "surface":
+		return false
+	var cell := diggable_soil_cell()
+	if cell.x < 0:
+		return false
+	attack_cooldown = ATTACK_COOLDOWN
+	dug_cells[cell] = true
+	var found_kind := ""
+	if random.randf() < 0.7:
+		var dig_loot := ["rope", "wood scrap", "coiled spring", "leaves", "empty bottle"]
+		found_kind = dig_loot[random.randi_range(0, dig_loot.size() - 1)]
+		litter.append({
+			"kind": found_kind,
+			"position": Vector2(cell) + Vector2(0.5, 0.5),
+			"phase": float(litter.size()) * 1.1,
+		})
+	if found_kind == "":
+		message = "Just loose soil — nothing buried here"
+	else:
+		message = "You dig up " + String(ITEM_PHRASES[found_kind])
+	message_timer = 2.4
+	spawn_burst(Vector2(cell) + Vector2(0.5, 0.5), floor_soil_color.lightened(0.15), 10)
+	add_shake(0.22)
+	_sfx("dig")
+	return true
+
 func try_collect_spirit() -> bool:
 	if state != "playing" or level_kind != "surface":
 		return false
@@ -2166,7 +2278,7 @@ func build_selected() -> void:
 	add_shake(0.32)
 	_sfx("craft_build")
 
-const GEAR_IDS := ["life_jacket", "fishing_catcher", "sword", "shotgun", "axe", "boat"]
+const GEAR_IDS := ["life_jacket", "fishing_catcher", "sword", "shotgun", "axe", "boat", "shovel"]
 
 func _gear_worn(id: String) -> bool:
 	match id:
@@ -2182,6 +2294,8 @@ func _gear_worn(id: String) -> bool:
 			return has_axe
 		"boat":
 			return has_boat
+		"shovel":
+			return has_shovel
 	return false
 
 func _gear_on_ground(id: String) -> bool:
@@ -2198,6 +2312,8 @@ func _gear_on_ground(id: String) -> bool:
 			return axe_on_ground
 		"boat":
 			return boat_on_ground
+		"shovel":
+			return shovel_on_ground
 	return false
 
 func _gear_position(id: String) -> Vector2:
@@ -2214,6 +2330,8 @@ func _gear_position(id: String) -> Vector2:
 			return axe_position
 		"boat":
 			return boat_position
+		"shovel":
+			return shovel_position
 	return Vector2.ZERO
 
 func _gear_label(id: String) -> String:
@@ -2230,6 +2348,8 @@ func _gear_label(id: String) -> String:
 			return "AXE"
 		"boat":
 			return "BOAT"
+		"shovel":
+			return "SHOVEL"
 	return id.to_upper()
 
 func _worn_gear_ids() -> Array:
@@ -2266,6 +2386,10 @@ func _drop_gear(id: String) -> void:
 			has_boat = false
 			boat_on_ground = true
 			boat_position = player_position
+		"shovel":
+			has_shovel = false
+			shovel_on_ground = true
+			shovel_position = player_position
 	_recompute_active_weapon()
 	message = "Dropped " + _gear_label(id)
 	message_timer = 2.8
@@ -2302,6 +2426,10 @@ func _pickup_gear(id: String) -> bool:
 		"boat":
 			has_boat = true
 			boat_on_ground = false
+		"shovel":
+			has_shovel = true
+			shovel_on_ground = false
+			active_weapon = "shovel"
 	if state == "crafting":
 		close_craft_table()
 	message = "Equipped"
@@ -2358,7 +2486,7 @@ func confirm_drop_selection() -> void:
 	_drop_gear(id)
 
 func _is_weapon(id: String) -> bool:
-	return id == "sword" or id == "shotgun" or id == "axe"
+	return id == "sword" or id == "shotgun" or id == "axe" or id == "shovel"
 
 func set_main_gear() -> void:
 	if state != "drop_select":
@@ -2594,11 +2722,21 @@ func player_face_name() -> String:
 		return "ne" if facing.y < 0.0 else "se"
 	return "nw" if facing.y < 0.0 else "sw"
 
+func is_soil_cell(cell: Vector2i) -> bool:
+	# Brown soil tiles that can be dug with the shovel (jungle level only).
+	if level_theme != "jungle":
+		return false
+	return posmod(cell.x * 131 + cell.y * 197 + cell.x * cell.y * 7, 100) < 24
+
+func is_dug_cell(cell: Vector2i) -> bool:
+	return dug_cells.has(cell)
+
 func floor_color(cell: Vector2i) -> Color:
-	if level_theme == "jungle":
-		var soil_seed := posmod(cell.x * 131 + cell.y * 197 + cell.x * cell.y * 7, 100)
-		if soil_seed < 24:
-			return floor_soil_color
+	if dug_cells.has(cell):
+		# Dug soil fades: darker, looser earth marks the worked tile.
+		return floor_soil_color.darkened(0.34)
+	if is_soil_cell(cell):
+		return floor_soil_color
 	var value := posmod(cell.x * 3 + cell.y * 5 + cell.x * cell.y, 5)
 	match value:
 		0:
@@ -2793,6 +2931,15 @@ func draw_floors() -> void:
 				draw_grass_tuft(cell, center)
 			if flower_on_cell(cell):
 				draw_flower(center, flower_color(cell), flower_scale(cell))
+			if state == "playing" and has_shovel and active_weapon == "shovel" and is_soil_cell(cell) and not dug_cells.has(cell) and cell == cell_at(player_position):
+				var dig_label := "PRESS ENTER TO DIG SOIL"
+				var dig_w := ui_font.get_string_size(dig_label, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x
+				var dig_box_w := maxf(150.0, dig_w + 30.0)
+				var dig_prompt := Rect2(center + Vector2(-dig_box_w * 0.5, -52), Vector2(dig_box_w, 23))
+				draw_rect(Rect2(dig_prompt.position + Vector2(3, 4), dig_prompt.size), Color(0.0, 0.0, 0.0, 0.22), true)
+				draw_rect(dig_prompt, Color(void_color, 0.92), true)
+				draw_line(dig_prompt.position, dig_prompt.position + Vector2(dig_prompt.size.x, 0), accent_color, 1.5)
+				draw_string(ui_font, dig_prompt.position + Vector2(15, 16), dig_label, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, paper_color)
 
 
 
@@ -3087,6 +3234,11 @@ func draw_depth_sorted() -> void:
 			"depth": iso_to_screen(boat_position).y,
 			"kind": "dropped_boat",
 		})
+	if shovel_on_ground:
+		drawables.append({
+			"depth": iso_to_screen(shovel_position).y,
+			"kind": "dropped_shovel",
+		})
 	drawables.append({
 		"depth": iso_to_screen(player_position).y,
 		"kind": "player",
@@ -3139,6 +3291,8 @@ func draw_depth_sorted() -> void:
 				draw_dropped_axe()
 			"dropped_boat":
 				draw_dropped_boat()
+			"dropped_shovel":
+				draw_dropped_shovel()
 			"player":
 				draw_player()
 			"enemy":
@@ -3598,6 +3752,8 @@ func draw_player() -> void:
 				draw_pixel_sprite("shotgun_" + face, frame_index, box, tint)
 			if has_axe and active_weapon == "axe":
 				draw_pixel_sprite("axe_" + face, frame_index, box, tint)
+			if has_shovel and active_weapon == "shovel":
+				draw_pixel_sprite("shovel_" + face, frame_index, box, tint)
 		draw_pixel_sprite(face, frame_index, box, tint)
 		if face != "nw":
 			if has_sword and active_weapon == "sword":
@@ -3606,6 +3762,8 @@ func draw_player() -> void:
 				draw_pixel_sprite("shotgun_" + face, frame_index, box, tint)
 			if has_axe and active_weapon == "axe":
 				draw_pixel_sprite("axe_" + face, frame_index, box, tint)
+			if has_shovel and active_weapon == "shovel":
+				draw_pixel_sprite("shovel_" + face, frame_index, box, tint)
 	if has_boat and not drowning and water_cells.has(cell_at(player_position)):
 		# The boat carries the player: a hull bobbing around the feet in the river.
 		var hull_center := Vector2(spring.x, base.y + 3)
@@ -3893,6 +4051,28 @@ func draw_dropped_boat() -> void:
 	draw_polyline(PackedVector2Array([hull[0], hull[1], hull[2], hull[3], hull[4], hull[0]]), ink_color, 1.4, true)
 	if player_position.distance_to(boat_position) <= 0.85:
 		draw_dropped_prompt(position, "BOAT", safe_color)
+
+func draw_dropped_shovel() -> void:
+	var position := iso_to_screen(shovel_position)
+	draw_shadow(position, 20.0, 0.3)
+	var handle_base := position + Vector2(8.0, 8.0)
+	var handle_tip := position + Vector2(-6.0, -10.0)
+	draw_line(handle_base, handle_tip, ink_color, 3.2)
+	draw_line(handle_base, handle_tip, floor_soil_color.lightened(0.05), 1.6)
+	# Scoop head below the handle.
+	var scoop := PackedVector2Array([
+		handle_tip + Vector2(-6, 7),
+		handle_tip + Vector2(7, 7),
+		handle_tip + Vector2(9, -2),
+		handle_tip + Vector2(4, -7),
+		handle_tip + Vector2(-4, -7),
+		handle_tip + Vector2(-9, -2),
+	])
+	draw_colored_polygon(scoop, slate_light_color)
+	draw_colored_polygon(PackedVector2Array([scoop[1], scoop[2], scoop[3], scoop[4], handle_tip + Vector2(2, -2)]), slate_light_color.lightened(0.12))
+	draw_polyline(PackedVector2Array([scoop[0], scoop[1], scoop[2], scoop[3], scoop[4], scoop[5], scoop[0]]), ink_color, 1.3, true)
+	if player_position.distance_to(shovel_position) <= 0.85:
+		draw_dropped_prompt(position, "SHOVEL", accent_color)
 
 func draw_dropped_shotgun(drop_position: Vector2) -> void:
 	var position := iso_to_screen(drop_position)

@@ -136,6 +136,9 @@ func run_test() -> void:
 	if not validate_jungle_craft():
 		quit(1)
 		return
+	if not validate_jungle_shovel():
+		quit(1)
+		return
 	if not validate_occlusion_reveal():
 		quit(1)
 		return
@@ -900,6 +903,87 @@ func validate_jungle_craft() -> bool:
 		return false
 	game.build_selected()
 	return game.has_fire and game.state == "playing" and int(game.item_inventory.get("wood scrap", 0)) == 0
+
+func validate_jungle_shovel() -> bool:
+	var jungle_index: int = game.LEVELS.size() - 1
+	game.load_level(jungle_index)
+	# The shovel rests on reachable land near the start, beside the axe.
+	if not game.shovel_on_ground or game.has_shovel:
+		return false
+	var shovel_cell: Vector2i = game.cell_at(game.shovel_position)
+	if not game.walkable.has(shovel_cell) or game.shovel_position.distance_to(Vector2(game.start_cell) + Vector2(0.5, 0.5)) > 3.0:
+		return false
+	# The shovel spawn tile is kept clear of distributed litter.
+	for item: Dictionary in game.litter:
+		if game.cell_at(item["position"]) == shovel_cell:
+			return false
+	# G-style pickup equips it as the main tool; it is gear and a weapon-like main.
+	game.player_position = game.shovel_position
+	if not game._pickup_gear("shovel"):
+		return false
+	if not game.has_shovel or game.shovel_on_ground or game.active_weapon != "shovel" or not game._is_weapon("shovel"):
+		return false
+	# A brown soil tile exists on reachable land.
+	var soil_cell := Vector2i(-1, -1)
+	for key in game.walkable:
+		var cell: Vector2i = key
+		if not game.is_soil_cell(cell) or game.water_cells.has(cell) or game.solid_cells.has(cell) or game.spirit_cells.has(cell):
+			continue
+		if cell == game.start_cell or cell == game.exit_cell:
+			continue
+		soil_cell = cell
+		break
+	if soil_cell.x < 0:
+		return false
+	# Digging works on the tile under the player and fades its color.
+	game.player_position = Vector2(soil_cell) + Vector2(0.5, 0.5)
+	var dug_color_before: Color = game.floor_color(soil_cell)
+	var litter_before: int = game.litter.size()
+	var effects_before: int = game.effects.size()
+	if not game.try_dig_soil():
+		return false
+	if not game.dug_cells.has(soil_cell) or not game.is_dug_cell(soil_cell):
+		return false
+	if game.floor_color(soil_cell) == dug_color_before or game.floor_color(soil_cell).is_equal_approx(dug_color_before):
+		return false
+	if game.effects.size() != effects_before + 1:
+		return false
+	# Digging either reveals one of the buried loot kinds or nothing at all.
+	if game.litter.size() != litter_before:
+		if game.litter.size() != litter_before + 1:
+			return false
+		var new_item: Dictionary = game.litter[game.litter.size() - 1]
+		var loot_kinds := ["rope", "wood scrap", "coiled spring", "leaves", "empty bottle"]
+		if not loot_kinds.has(String(new_item["kind"])):
+			return false
+		if not game.can_occupy(new_item["position"], 0.22):
+			return false
+	# The same tile cannot be dug twice.
+	game.player_position = Vector2(soil_cell) + Vector2(0.5, 0.5)
+	if game.diggable_soil_cell() != Vector2i(-1, -1):
+		return false
+	if game.try_dig_soil():
+		return false
+	# ENTER with the shovel on another soil tile digs (no strike arc), and it can
+	# be dropped for a later G pickup.
+	var soil_cell2 := Vector2i(-1, -1)
+	for key in game.walkable:
+		var cell2: Vector2i = key
+		if not game.is_soil_cell(cell2) or game.water_cells.has(cell2) or game.solid_cells.has(cell2):
+			continue
+		if cell2 == soil_cell or cell2 == game.start_cell or cell2 == game.exit_cell:
+			continue
+		soil_cell2 = cell2
+		break
+	if soil_cell2.x >= 0:
+		game.attack_cooldown = 0.0
+		var effects_before_dig: int = game.effects.size()
+		game.player_position = Vector2(soil_cell2) + Vector2(0.5, 0.5)
+		game.attack()
+		if not game.dug_cells.has(soil_cell2) or game.effects.size() != effects_before_dig + 1:
+			return false
+	game._drop_gear("shovel")
+	return not game.has_shovel and game.shovel_on_ground
 
 func validate_jungle_level() -> bool:
 	game.load_level(game.LEVELS.size() - 1)
