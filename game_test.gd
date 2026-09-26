@@ -90,6 +90,8 @@ func run_test() -> void:
 			valid = validate_surface_level()
 		elif level_index == radio_level_index():
 			valid = validate_radio_level()
+		elif level_index == desert_level_index():
+			valid = validate_desert_level()
 		elif level_index == game.LEVELS.size() - 2:
 			valid = validate_jungle_level()
 		elif level_index == game.LEVELS.size() - 1:
@@ -260,6 +262,9 @@ func run_test() -> void:
 	if not validate_jungle_shovel():
 		quit(1)
 		return
+	if not validate_fishing_catcher():
+		quit(1)
+		return
 	if not validate_occlusion_reveal():
 		quit(1)
 		return
@@ -271,6 +276,251 @@ func radio_level_index() -> int:
 		if String(game.LEVELS[index].get("theme", "")) == "radio_jungle":
 			return index
 	return -1
+
+func desert_level_index() -> int:
+	for index in range(game.LEVELS.size()):
+		if String(game.LEVELS[index].get("theme", "")) == "desert_storm":
+			return index
+	return -1
+
+func validate_desert_level() -> bool:
+	var desert_index := desert_level_index()
+	if desert_index < 0:
+		return false
+	game.load_level(desert_index)
+	if game.level_index != desert_index or game.level_kind != "surface" or game.level_theme != "desert_storm" or game.map_rows.size() != 18:
+		return false
+	if game.walkable.is_empty() or game.flow.size() != game.walkable.size():
+		return false
+	if not game.walkable.has(game.start_cell) or not game.flow.has(game.start_cell):
+		return false
+	if not game.walkable.has(game.exit_cell) or not game.flow.has(game.exit_cell):
+		return false
+	if game.water_cells.size() != 0 or not game.shards.is_empty() or not game.bottle_sources.is_empty():
+		return false
+	for row in game.map_rows:
+		if String(row).length() != 30:
+			return false
+	# A sparse desert: a few trees, plenty of rocks, old bones.
+	if game.tree_cells.size() < 2 or game.tree_cells.size() > 8:
+		return false
+	if game.stone_cells.size() < 8 or game.skeleton_cells.size() < 3:
+		return false
+	for stone_cell: Vector2i in game.stone_cells:
+		if not game.walkable.has(stone_cell) or not game.solid_cells.has(stone_cell):
+			return false
+		if game.can_occupy(Vector2(stone_cell) + Vector2(0.5, 0.5), 0.22):
+			return false
+	for skeleton_cell: Vector2i in game.skeleton_cells:
+		if not game.walkable.has(skeleton_cell) or game.solid_cells.has(skeleton_cell):
+			return false
+	for tree_cell: Vector2i in game.tree_cells:
+		if not game.walkable.has(tree_cell) or not game.solid_cells.has(tree_cell):
+			return false
+	# Every enemy is a hyena prowling on reachable ground, spawned far from
+	# the start so the pack is not on top of the player at the outset.
+	if game.enemies.is_empty() or String(game.enemy_kind) != "hyena":
+		return false
+	for spawn_cell in game.enemy_spawns:
+		var sc: Vector2i = spawn_cell
+		if not game.walkable.has(sc) or not game.flow.has(sc):
+			return false
+		if Vector2(sc).distance_to(Vector2(game.start_cell)) < 6.0:
+			return false
+	for enemy in game.enemies:
+		if String(enemy["kind"]) != "hyena":
+			return false
+		if not game.walkable.has(game.cell_at(enemy["position"])) or not game.flow.has(game.cell_at(enemy["position"])):
+			return false
+	# Cloth, scrap and glass scatter on reachable, non-solid sand.
+	var desert_counts: Dictionary = {}
+	var seen_cells: Dictionary = {}
+	for item in game.litter:
+		var item_cell: Vector2i = game.cell_at(item["position"])
+		if not game.walkable.has(item_cell) or game.water_cells.has(item_cell) or game.solid_cells.has(item_cell) or not game.flow.has(item_cell):
+			return false
+		if seen_cells.has(item_cell):
+			return false
+		seen_cells[item_cell] = true
+		var kind := String(item["kind"])
+		desert_counts[kind] = int(desert_counts.get(kind, 0)) + 1
+	if int(desert_counts.get("cloth", 0)) < 4 or int(desert_counts.get("metal scrap", 0)) < 2 or int(desert_counts.get("wine glass", 0)) < 2:
+		return false
+	# Three material spirits, one per goggle ingredient, on unique tiles.
+	if game.spirits.size() != 3:
+		return false
+	var seen_spirits: Dictionary = {}
+	for spirit: Dictionary in game.spirits:
+		var rid := String(spirit["recipe"])
+		if not ["cloth", "metal_scrap", "wine_glass"].has(rid) or seen_spirits.has(rid):
+			return false
+		seen_spirits[rid] = true
+		var sc: Vector2i = game.cell_at(spirit["position"])
+		if not game.walkable.has(sc) or game.solid_cells.has(sc) or game.water_cells.has(sc):
+			return false
+		if sc == game.start_cell or sc == game.exit_cell:
+			return false
+		if not game.can_occupy(spirit["position"], 0.22):
+			return false
+	# Without the spirits the goggle materials unlock nothing.
+	game.item_inventory["cloth"] = 2
+	game.item_inventory["metal scrap"] = 1
+	game.item_inventory["wine glass"] = 1
+	if not game.recipes_for_item("cloth").is_empty() or game.recipe_for_build_kind("cloth") != -1:
+		return false
+	# By default the storm keeps hyenas out of the user's visibility: no
+	# goggles, no hyena sight anywhere.
+	if game.has_desert_goggles or game.goggles_on():
+		return false
+	if game.storm_visibility_radius() != game.STORM_VISIBILITY_BASE:
+		return false
+	var far_hyena: Dictionary = {
+		"position": game.player_position + Vector2(3.5, 3.5),
+		"kind": "hyena",
+		"health": 3,
+		"speed": 1.0,
+		"hit_flash": 0.0,
+		"attack_cooldown": 0.0,
+		"phase": 0.0,
+		"chase": 0.0,
+	}
+	if game.hyena_revealed(far_hyena):
+		return false
+	var near_hyena: Dictionary = far_hyena.duplicate()
+	near_hyena["position"] = game.player_position + Vector2(0.5, 0.0)
+	if game.hyena_revealed(near_hyena):
+		return false
+	# A blind player's sword cannot touch the hidden pack.
+	game.enemies.clear()
+	game.enemies.append(near_hyena)
+	game.attack_cooldown = 0.0
+	game.attack()
+	if game.enemies.size() != 1:
+		return false
+	# And a pack bite while blind is still an unseen instant death.
+	game.enemies.clear()
+	game.enemies.append({
+		"position": game.player_position + Vector2(0.4, 0.0),
+		"kind": "hyena",
+		"health": 3,
+		"speed": 1.0,
+		"hit_flash": 0.0,
+		"attack_cooldown": 0.0,
+		"phase": 0.0,
+		"chase": 0.0,
+	})
+	game.update_enemies(0.1)
+	if game.state != "lost" or game.health != 0:
+		return false
+	# The exit stays hidden while blinded.
+	game.load_level(desert_index)
+	game.player_position = Vector2(game.exit_cell) + Vector2(0.5, 0.5)
+	game.update_surface_level()
+	if game.state != "playing" or game.level_index != desert_index:
+		return false
+	# Collect the spirits: the goggle idea opens.
+	for spirit in game.spirits:
+		game.player_position = spirit["position"]
+		if not game.try_collect_spirit():
+			return false
+	if not game.unlocked_ideas.has("cloth") or not game.unlocked_ideas.has("metal_scrap") or not game.unlocked_ideas.has("wine_glass"):
+		return false
+	# Craft the goggles from the three storm materials.
+	var goggles_recipe: int = game.recipe_index_for_id("desert_goggles")
+	if goggles_recipe < 0 or not game.recipe_available(goggles_recipe):
+		return false
+	game.item_inventory["cloth"] = 2
+	game.item_inventory["metal scrap"] = 1
+	game.item_inventory["wine glass"] = 1
+	game.open_craft_table()
+	var craft_visible: Array = game.craft_visible_elements()
+	var cloth_pos := -1
+	for i in range(craft_visible.size()):
+		if game.craft_element_kind(craft_visible[i]) == "cloth":
+			cloth_pos = i
+	if cloth_pos < 0:
+		return false
+	game.craft_selected = cloth_pos
+	game.refresh_recipe_index()
+	if game.recipe_index != goggles_recipe:
+		return false
+	game.build_selected()
+	if not game.has_desert_goggles or game.state != "playing" or game.active_weapon != "sword":
+		return false
+	if int(game.item_inventory.get("cloth", 0)) != 0 or int(game.item_inventory.get("metal scrap", 0)) != 0 or int(game.item_inventory.get("wine glass", 0)) != 0:
+		return false
+	# The goggles triple the sight pool and reveal the storm hyenas.
+	if not is_equal_approx(game.storm_visibility_radius(), game.STORM_VISIBILITY_BASE * game.STORM_GOGGLE_BOOST):
+		return false
+	far_hyena["position"] = game.player_position + Vector2(3.5, 3.5)
+	if not game.goggles_on() or not game.hyena_revealed(far_hyena):
+		return false
+	# A revealed hyena can be fought and killed with the sword.
+	game.enemies.clear()
+	game.enemies.append({
+		"position": game.player_position + game.player_facing * 0.8,
+		"kind": "hyena",
+		"health": 1,
+		"speed": 1.0,
+		"hit_flash": 0.0,
+		"attack_cooldown": 0.0,
+		"phase": 0.0,
+	})
+	game.attack_cooldown = 0.0
+	game.attack()
+	if game.enemies.size() != 0:
+		return false
+	# A revealed hyena bite is a normal wound, not a hidden death.
+	game.enemies.append({
+		"position": game.player_position + Vector2(0.4, 0.0),
+		"kind": "hyena",
+		"health": 3,
+		"speed": 1.0,
+		"hit_flash": 0.0,
+		"attack_cooldown": 0.0,
+		"phase": 0.0,
+	})
+	var health_before: int = game.health
+	game.update_enemies(0.1)
+	if game.state != "playing" or game.health != health_before - 1:
+		return false
+	# Hyenas follow the player, and take in speed the longer the player
+	# lingers in one place.
+	var hunt_spot := Vector2(10.5, 8.5)
+	game.player_position = hunt_spot
+	game.player_linger = game.HUNT_LINGER_TIME  # the player stood still too long
+	game.enemies.clear()
+	game.enemies.append({
+		"position": game.player_position + Vector2(3.5, 3.5),
+		"kind": "hyena",
+		"health": 3,
+		"speed": 1.0,
+		"hit_flash": 0.0,
+		"attack_cooldown": 0.0,
+		"phase": 0.0,
+		"chase": 0.0,
+	})
+	game.update_enemies(0.5)
+	var chase_lingering: float = float(game.enemies[0].get("chase", 0.0))
+	if chase_lingering <= 0.0:
+		return false
+	# Keep moving again and the pack's speed bleeds off.
+	game.player_linger = 0.0
+	game.enemies[0]["chase"] = chase_lingering
+	game.enemies[0]["position"] = game.player_position + Vector2(3.5, 3.5)
+	game.update_enemies(0.5)
+	if float(game.enemies[0].get("chase", 0.0)) >= chase_lingering:
+		return false
+	# In bite range the attack cooldown holds and the chase loses steam.
+	game.enemies[0]["position"] = game.player_position
+	game.enemies[0]["attack_cooldown"] = 5.0
+	game.update_enemies(0.25)
+	if float(game.enemies[0].get("chase", 0.0)) >= chase_lingering:
+		return false
+	# With goggles worn the exit appears; crossing moves to the next level.
+	game.player_position = Vector2(game.exit_cell) + Vector2(0.5, 0.5)
+	game.update_surface_level()
+	return game.state == "playing" and game.level_index == desert_index + 1
 
 func validate_occlusion_reveal() -> bool:
 	game.load_level(1)
@@ -1329,6 +1579,60 @@ func validate_jungle_level() -> bool:
 		if not game.can_occupy(spirit["position"], 0.22):
 			return false
 	if not catcher_found:
+		return false
+	return true
+
+func validate_fishing_catcher() -> bool:
+	game.load_level(0)
+	# The catcher is a primary item: it survives the active-weapon recompute.
+	if not game._is_weapon("fishing_catcher"):
+		return false
+	game.has_fishing_catcher = true
+	game.active_weapon = "fishing_catcher"
+	game._recompute_active_weapon()
+	if game.active_weapon != "fishing_catcher":
+		return false
+	# Find a river tile and a walkable bank cell beside it.
+	var water_cell := Vector2i(-1, -1)
+	var shore_cell := Vector2i(-1, -1)
+	for cell in game.water_cells:
+		for offset in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
+			var neighbor: Vector2i = cell + offset
+			if game.walkable.has(neighbor) and not game.water_cells.has(neighbor) and not game.solid_cells.has(neighbor):
+				water_cell = cell
+				shore_cell = neighbor
+				break
+		if shore_cell.x >= 0:
+			break
+	if shore_cell.x < 0:
+		return false
+	# Standing on the bank, the water is in reach and a cast can land a fish.
+	game.player_position = Vector2(shore_cell) + Vector2(0.5, 0.5)
+	if game.nearest_water_cell().x < 0:
+		return false
+	var caught := false
+	for attempt in range(40):
+		game.attack_cooldown = 0.0
+		if not game.try_catch_fish():
+			return false
+		if int(game.item_inventory.get("fish", 0)) > 0:
+			caught = true
+			break
+	if not caught:
+		return false
+	# Away from any water the cast fails outright.
+	game.player_position = Vector2(game.start_cell) + Vector2(0.5, 0.5)
+	var away_from_water := true
+	for cell in game.water_cells:
+		if game.player_position.distance_to(Vector2(cell) + Vector2(0.5, 0.5)) <= game.SOURCE_REACH:
+			away_from_water = false
+			break
+	if away_from_water:
+		if game.nearest_water_cell().x >= 0 or game.try_catch_fish():
+			return false
+	# The catcher is not a crossing item: standing in water still drowns.
+	game.player_position = Vector2(water_cell) + Vector2(0.5, 0.5)
+	if game.crossing_safe():
 		return false
 	return true
 
