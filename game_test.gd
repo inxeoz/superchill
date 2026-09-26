@@ -92,6 +92,8 @@ func run_test() -> void:
 			valid = validate_radio_level()
 		elif level_index == desert_level_index():
 			valid = validate_desert_level()
+		elif level_index == grassland_level_index():
+			valid = validate_distract_level()
 		elif level_index == game.LEVELS.size() - 2:
 			valid = validate_jungle_level()
 		elif level_index == game.LEVELS.size() - 1:
@@ -282,6 +284,166 @@ func desert_level_index() -> int:
 		if String(game.LEVELS[index].get("theme", "")) == "desert_storm":
 			return index
 	return -1
+
+func grassland_level_index() -> int:
+	for index in range(game.LEVELS.size()):
+		if String(game.LEVELS[index].get("theme", "")) == "grassland":
+			return index
+	return -1
+
+func validate_distract_level() -> bool:
+	var level := grassland_level_index()
+	if level < 0:
+		return false
+	game.load_level(level)
+	if game.level_index != level or game.level_kind != "surface" or game.level_theme != "grassland":
+		return false
+	if game.walkable.is_empty() or not game.walkable.has(game.start_cell) or not game.flow.has(game.start_cell):
+		return false
+	# Two beasts guard the meadow: one roams, one waits at the exit.
+	var roamer: Dictionary = {}
+	var ambusher: Dictionary = {}
+	for enemy in game.enemies:
+		if String(enemy.get("role", "")) == "roamer":
+			roamer = enemy
+		elif String(enemy.get("role", "")) == "ambusher":
+			ambusher = enemy
+	if roamer.is_empty() or ambusher.is_empty():
+		return false
+	if ambusher["home"].distance_to(Vector2(game.exit_cell) + Vector2(0.5, 0.5)) > 0.01:
+		return false
+	# The spirit unlocks the noise-maker recipe, not before.
+	if game.recipe_index_for_id("noise_maker") < 0:
+		return false
+	if game.recipe_available(game.recipe_index_for_id("noise_maker")):
+		return false
+	for spirit in game.spirits:
+		game.player_position = spirit["position"]
+		if not game.try_collect_spirit():
+			return false
+	if not game.unlocked_ideas.has("noise_maker"):
+		return false
+	if not game.recipe_available(game.recipe_index_for_id("noise_maker")):
+		return false
+	# Craft it from a bottle, a pebble and a rope.
+	game.item_inventory["pebble"] = 1
+	game.item_inventory["rope"] = 1
+	game.bottle_count = 1
+	game.open_craft_table()
+	var recipe_i: int = game.recipe_index_for_id("noise_maker")
+	game.craft_selected = 0
+	game.recipe_index = recipe_i
+	game.build_selected()
+	if not game.has_noise_maker or game.state != "playing":
+		return false
+	if int(game.item_inventory.get("pebble", 0)) != 0 or int(game.item_inventory.get("rope", 0)) != 0 or game.bottle_count != 0:
+		return false
+	# A beast that reaches the player is a guaranteed kill: game over, no buffer.
+	var bite_beast: Dictionary = {
+		"position": game.player_position + Vector2(0.3, 0.0),
+		"kind": "roamer",
+		"role": "roamer",
+		"health": game.BEAST_HEALTH,
+		"speed": game.ROAMER_SPEED,
+		"hit_flash": 0.0,
+		"attack_cooldown": 0.0,
+		"phase": 0.0,
+		"chase": 0.0,
+		"mode": "roam",
+		"home": game.player_position,
+		"home_flow": {},
+		"roam_target": Vector2.ZERO,
+	}
+	game.enemies.clear()
+	game.enemies.append(bite_beast)
+	game.update_enemies(0.1)
+	if game.state != "lost" or game.health != 0:
+		return false
+	# Detection: a clear line chases (full speed) and a blocked line does not.
+	if not game.beast_can_see(Vector2i(5, 5), Vector2i(5, 8), false):
+		return false
+	if game.sight_visible_fraction(Vector2i(5, 5), Vector2i(5, 8)) < game.BEAST_SIGHT_CHASE:
+		return false
+	# Hysteresis: once hunting, a marginally-blocked line (visible fraction under
+	# the fresh-spot threshold but over the keep threshold) still holds the chase.
+	var edge_seen: float = game.sight_visible_fraction(Vector2i(5, 5), Vector2i(5, 8))
+	if game.beast_can_see(Vector2i(5, 5), Vector2i(5, 8), true) and edge_seen < game.BEAST_SIGHT_KEEP:
+		return false
+	game.load_level(grassland_level_index())
+	# A shot of the sight check: with a solid prop dropped between the beast and
+	# the player, at least one sample must read blocked.
+	var blocked_seen := false
+	if game.walkable.has(Vector2i(5, 6)):
+		var was_solid: bool = game.solid_cells.has(Vector2i(5, 6))
+		game.solid_cells[Vector2i(5, 6)] = true
+		blocked_seen = game.sight_visible_fraction(Vector2i(5, 5), Vector2i(5, 8)) < 1.0
+		if not was_solid:
+			game.solid_cells.erase(Vector2i(5, 6))
+	if not blocked_seen:
+		return false
+	# Charging and releasing a throw lands the noise and lures both beasts: they
+	# stop chasing the player and head for the sound instead.
+	game.player_position = Vector2(6.5, 8.5)
+	game.player_facing = Vector2(1.0, 0.0)
+	game.has_noise_maker = true
+	game.begin_noise_throw()
+	if not game.throwing_noise:
+		return false
+	game.update_noise(game.THROW_CHARGE_TIME)
+	if game.noise_throw_distance() <= game.THROW_MIN_RANGE:
+		return false
+	game.release_noise_throw()
+	if game.has_noise_maker or game.noise_timer <= 0.0 or game.noise_flow.is_empty():
+		return false
+	var noise_before: Vector2 = game.noise_position
+	game.enemies.clear()
+	# Put the player off the beast -> noise lane, then spawn the beasts on the
+	# noise's row so the lure carries them straight to the sound.
+	game.player_position = Vector2(6.5, 10.5)
+	var lure_spawn := Vector2(5.5, 8.5)
+	for role in ["roamer", "ambusher"]:
+		game.enemies.append({
+			"position": lure_spawn,
+			"kind": role,
+			"role": role,
+			"health": game.BEAST_HEALTH,
+			"speed": game.ROAMER_SPEED,
+			"hit_flash": 0.0,
+			"attack_cooldown": 0.0,
+			"phase": 0.0,
+			"chase": 0.0,
+			"mode": "roam",
+			"home": Vector2(game.exit_cell) + Vector2(0.5, 0.5),
+			"home_flow": {},
+			"roam_target": Vector2.ZERO,
+		})
+	var start_distance: float = game.enemies[0]["position"].distance_to(noise_before)
+	game.update_enemies(0.5)
+	if String(game.enemies[0]["mode"]) != "lured" or String(game.enemies[1]["mode"]) != "lured":
+		return false
+	if game.enemies[0]["position"].distance_to(noise_before) >= start_distance:
+		return false
+	# Given time, both beasts leave the player and gather at the noise itself.
+	for step in range(80):
+		game.update_enemies(0.1)
+	if game.enemies[0]["position"].distance_to(noise_before) > 1.3 or game.enemies[1]["position"].distance_to(noise_before) > 1.3:
+		return false
+	# Once the noise dies the ambusher heads home and the roamer resumes roaming.
+	game.noise_timer = 0.0
+	game.noise_flow.clear()
+	game.player_position = Vector2(0.5, 0.5)
+	game.enemies[1]["position"] = game.enemies[1]["home"] + Vector2(3.0, 0.0)
+	game.enemies[1]["home_flow"] = game.build_flow_from(game.cell_at(game.enemies[1]["home"]))
+	game.update_beast(game.enemies[0], 0.1)
+	if String(game.enemies[0]["mode"]) != "roam":
+		return false
+	game.update_beast(game.enemies[1], 0.1)
+	if String(game.enemies[1]["mode"]) != "return":
+		return false
+	# Reaching the exit moves on to the next level.
+	game.player_position = Vector2(game.exit_cell) + Vector2(0.5, 0.5)
+	game.update_surface_level()
+	return game.state == "playing" and game.level_index == level + 1
 
 func validate_desert_level() -> bool:
 	var desert_index := desert_level_index()

@@ -22,6 +22,7 @@ const ITEM_PHRASES := {
 	"leaves": "some leaves",
 	"plastic wrapper": "a plastic wrapper",
 	"rope": "a length of rope",
+	"pebble": "a pebble",
 	"wood scrap": "a scrap of wood",
 	"coiled spring": "a coiled spring",
 	"empty bottle": "an empty bottle",
@@ -39,6 +40,7 @@ const ITEM_PLURALS := {
 	"leaves": "leaves",
 	"plastic wrapper": "plastic wrappers",
 	"rope": "lengths of rope",
+	"pebble": "pebbles",
 	"wood scrap": "wood scraps",
 	"coiled spring": "coiled springs",
 	"empty bottle": "empty bottles",
@@ -383,6 +385,63 @@ const LEVELS := [
 		"gate": "70594a",
 		"paper": "fff3d6",
 		"muted": "d8b98a",
+	},
+	{
+		"name": "DISTRACT THE MONSTER",
+		"kind": "surface",
+		"theme": "grassland",
+		"map": [
+			"############################",
+			"#.MM.......................#",
+			"#....~~..............~~....#",
+			"#....~~..............~~....#",
+			"#........T.......T.........#",
+			"#......................MM..#",
+			"#......M.........M.........#",
+			"#.MM.......................#",
+			"#...T.......~~~~.......T...#",
+			"#...........~~~~...........#",
+			"#.......................MMM#",
+			"#......M.........M.........#",
+			"#..........................#",
+			"#...T........T.........T...#",
+			"#.MM...............MM......#",
+			"#.MM...............MM......#",
+			"#..........................#",
+			"############################",
+		],
+		"shards": [],
+		"spawns": [],
+		"trees": [Vector2i(4, 4), Vector2i(12, 3), Vector2i(21, 5), Vector2i(6, 9), Vector2i(17, 11), Vector2i(9, 14), Vector2i(20, 14), Vector2i(13, 15), Vector2i(2, 4), Vector2i(6, 4), Vector2i(14, 4), Vector2i(20, 4), Vector2i(24, 4), Vector2i(3, 8), Vector2i(18, 8), Vector2i(7, 9), Vector2i(19, 9), Vector2i(24, 9), Vector2i(4, 10), Vector2i(20, 10), Vector2i(8, 13), Vector2i(17, 13), Vector2i(22, 13), Vector2i(5, 15), Vector2i(11, 14), Vector2i(21, 15), Vector2i(15, 12)],
+		"bushes": [Vector2i(3, 7), Vector2i(15, 6), Vector2i(23, 8), Vector2i(8, 11), Vector2i(19, 12), Vector2i(12, 13), Vector2i(5, 12), Vector2i(16, 15), Vector2i(24, 3), Vector2i(2, 10)],
+		"beasts": [
+			{"cell": Vector2i(11, 11), "kind": "roamer", "role": "roamer"},
+			{"cell": Vector2i(24, 2), "kind": "ambusher", "role": "ambusher"},
+		],
+		"spirits": [
+			{"cell": Vector2i(9, 10), "recipe": "noise_maker"},
+		],
+		"start": Vector2i(2, 16),
+		"exit": Vector2i(25, 1),
+		"void": "0b1a10",
+		"deep": "2f7a3c",
+		"ink": "14351d",
+		"ink_soft": "1f4a29",
+		"wall_alt": "2f6b38",
+		"slate": "3f7f45",
+		"slate_light": "5aa35c",
+		"floor_mist": "6fae57",
+		"floor_petrol": "86bd63",
+		"floor_plum": "a8cf72",
+		"soil": "6b5230",
+		"accent": "ffd166",
+		"safe": "6de5a0",
+		"danger": "d0554f",
+		"enemy": "8a5a2a",
+		"enemy_accent": "f0c060",
+		"gate": "4f6b3a",
+		"paper": "f4f1d8",
+		"muted": "b8c99a",
 	},
 	{
 		"name": "JUNGLE",
@@ -1185,6 +1244,12 @@ var boat_position := Vector2.ZERO
 var has_fire := false
 var has_fire_mashal := false
 var has_desert_goggles := false
+var has_noise_maker := false
+var throwing_noise := false
+var throw_charge := 0.0
+var noise_position := Vector2.ZERO
+var noise_timer := 0.0
+var noise_flow: Dictionary = {}
 var fire_mashal_on_ground := false
 var fire_mashal_position := Vector2.ZERO
 var has_camp_fire := false
@@ -1238,6 +1303,25 @@ const STORM_GATE_MAX := Vector2i(28, 5)
 const HUNT_LINGER_TIME := 6.0
 const HYENA_SNIFF_RANGE := 6.5
 const HYENA_ROAM_SPEED := 0.7
+# Distract the monster: a grassland where two beasts guard the way out. A
+# thrown noise maker pulls both toward the sound so the exit opens up.
+const GRASSLAND_THEME := "grassland"
+const BEAST_ATTACK_RANGE := 0.72
+const BEAST_DETECT_RANGE := 2.6
+const BEAST_HUNT_SPEED := 3.6
+# Sight is sampled along the beast->player line: the beasts chase once more than
+# half the samples are clear, and keep chasing until it drops under a quarter.
+# Hysteresis keeps them from flip-flopping between detect/undetected at the edge.
+const BEAST_SIGHT_SAMPLES := 12
+const BEAST_SIGHT_CHASE := 0.5
+const BEAST_SIGHT_KEEP := 0.25
+const BEAST_HEALTH := 8
+const ROAMER_SPEED := 1.0
+const AMBUSH_SPEED := 1.2
+const THROW_CHARGE_TIME := 1.1
+const THROW_MIN_RANGE := 2.0
+const THROW_MAX_RANGE := 8.0
+const NOISE_LURE_TIME := 12.0
 const RADIO_RANGE := 2.6
 const RADIO_FOIL_BOOST := 0.55
 const RADIO_FOIL_DIST := 4.0
@@ -1289,6 +1373,7 @@ var map_rows: Array = []
 var shard_cells: Array = []
 var enemy_spawns: Array = []
 var tree_cells: Array = []
+var bush_cells: Array = []
 var stone_cells: Array = []
 var skeleton_cells: Array = []
 var spirits: Array = []
@@ -1477,6 +1562,7 @@ func load_level(index: int) -> void:
 	var configured_spawns: Array = level["spawns"]
 	enemy_spawns = configured_spawns
 	tree_cells = (level.get("trees", []) as Array).duplicate()
+	bush_cells = (level.get("bushes", []) as Array).duplicate()
 	stone_cells = (level.get("stones", []) as Array).duplicate()
 	skeleton_cells = (level.get("skeletons", []) as Array).duplicate()
 	start_cell = Vector2i(level["start"])
@@ -1486,6 +1572,11 @@ func load_level(index: int) -> void:
 	enemy_speed = float(level.get("enemy_speed", ENEMY_SPEED))
 	apply_level_colors(level)
 	build_walkable()
+	var decor_taken: Dictionary = {}
+	tree_cells = filter_decor_cells(tree_cells, decor_taken)
+	bush_cells = filter_decor_cells(bush_cells, decor_taken)
+	stone_cells = filter_decor_cells(stone_cells, decor_taken)
+	skeleton_cells = filter_decor_cells(skeleton_cells, decor_taken)
 	player_position = Vector2(start_cell) + Vector2(0.5, 0.5)
 	player_facing = Vector2(1.0, 1.0).normalized()
 	health = MAX_HEALTH
@@ -1511,6 +1602,12 @@ func load_level(index: int) -> void:
 	has_fire = false
 	has_fire_mashal = false
 	has_desert_goggles = false
+	has_noise_maker = false
+	throwing_noise = false
+	throw_charge = 0.0
+	noise_timer = 0.0
+	noise_position = Vector2.ZERO
+	noise_flow.clear()
 	fire_mashal_on_ground = false
 	fire_mashal_position = Vector2.ZERO
 	has_camp_fire = false
@@ -1568,11 +1665,13 @@ func load_level(index: int) -> void:
 	state = "playing"
 	if level_kind == "surface":
 		if level_theme == "night_jungle":
-			message = "Gather wood, leaves and flint — the fire mashal lights the way"
+			message = "The night is pitch black — too dark to see"
 		elif level_theme == "radio_jungle":
-			message = "Find the radio receiver and aluminum foil — reflect the station signal to call for help"
+			message = "You're stranded — call for help"
 		elif level_theme == "desert_storm":
-			message = "The storm blinds you — find cloth, scrap metal and a wine glass for desert goggles"
+			message = "The storm blinds you"
+		elif level_theme == "grassland":
+			message = "Two beasts guard the way out — stay clear"
 		else:
 			message = "Pick up gear with F • press B to craft"
 	elif level_index == 1:
@@ -1606,6 +1705,8 @@ func load_level(index: int) -> void:
 	solid_cells.clear()
 	for tree_cell in tree_cells:
 		solid_cells[tree_cell] = true
+	for bush_cell in bush_cells:
+		solid_cells[bush_cell] = true
 	for stone_cell in stone_cells:
 		solid_cells[stone_cell] = true
 	effects.clear()
@@ -1665,6 +1766,27 @@ func load_level(index: int) -> void:
 			"mode": "roam",
 			"roam_target": Vector2.ZERO,
 		})
+	for beast_data in level.get("beasts", []):
+		var beast_cell: Vector2i = beast_data["cell"]
+		if not walkable.has(beast_cell) or solid_cells.has(beast_cell):
+			continue
+		var beast_role := String(beast_data.get("role", "roamer"))
+		var beast_home: Vector2 = (Vector2(exit_cell) + Vector2(0.5, 0.5)) if beast_role == "ambusher" else (Vector2(beast_cell) + Vector2(0.5, 0.5))
+		enemies.append({
+			"position": Vector2(beast_cell) + Vector2(0.5, 0.5),
+			"kind": String(beast_data.get("kind", "roamer")),
+			"role": beast_role,
+			"health": int(beast_data.get("health", BEAST_HEALTH)),
+			"speed": float(beast_data.get("speed", ROAMER_SPEED if beast_role == "roamer" else AMBUSH_SPEED)),
+			"hit_flash": 0.0,
+			"attack_cooldown": 0.5,
+			"phase": enemies.size() * 0.9,
+			"chase": 0.0,
+			"mode": "roam",
+			"home": beast_home,
+			"home_flow": build_flow_from(cell_at(beast_home)),
+			"roam_target": Vector2.ZERO,
+		})
 
 func distribute_surface_items() -> void:
 	# Loose gear scattered on the reachable bank. Guarantees the craft recipes
@@ -1690,6 +1812,14 @@ func distribute_surface_items() -> void:
 			bag.append("metal scrap")
 		for i in range(3):
 			bag.append("wine glass")
+	elif level_theme == "grassland":
+		# Bottles, pebbles and rope for the noise maker.
+		for i in range(6):
+			bag.append("empty bottle")
+		for i in range(4):
+			bag.append("pebble")
+		for i in range(3):
+			bag.append("rope")
 	else:
 		for i in range(20):
 			bag.append("empty bottle")
@@ -1766,6 +1896,19 @@ func build_walkable() -> void:
 				walkable[cell] = true
 			if row[x] == "~" or row[x] == "F":
 				water_cells[cell] = true
+
+func filter_decor_cells(cells: Array, taken: Dictionary) -> Array:
+	# Keep a decor cell only if it is dry open ground and no other decor has
+	# already claimed the tile, so a tree never sprouts out of a mountain, wall
+	# or water tile and nothing shares a location.
+	var kept: Array = []
+	for raw_cell in cells:
+		var cell: Vector2i = raw_cell
+		if not walkable.has(cell) or water_cells.has(cell) or taken.has(cell):
+			continue
+		taken[cell] = true
+		kept.append(cell)
+	return kept
 
 func find_gun_drop_cells(count: int) -> Array:
 	# Walkable cells near the player start, free of spawns/shards/spirits,
@@ -1858,7 +2001,9 @@ func _process(delta: float) -> void:
 			update_surface_level()
 			update_drowning(delta)
 			update_night_darkness(delta)
-			if level_theme == "desert_storm":
+			if level_theme == "grassland":
+				update_noise(delta)
+			if level_theme == "desert_storm" or level_theme == "grassland":
 				update_enemies(delta)
 		else:
 			update_enemies(delta)
@@ -1924,6 +2069,47 @@ func can_occupy(position: Vector2, radius: float) -> bool:
 			return false
 	return true
 
+func sight_visible_fraction(from_cell: Vector2i, to_cell: Vector2i) -> float:
+	# Fraction of samples along the beast->player line that are not blocked by a
+	# wall, mountain, tree or solid prop. 1.0 = unobstructed, 0.0 = fully hidden.
+	var visible := 0
+	for index in range(1, BEAST_SIGHT_SAMPLES + 1):
+		var t := float(index) / float(BEAST_SIGHT_SAMPLES + 1)
+		var x := int(round(float(from_cell.x) + (float(to_cell.x) - float(from_cell.x)) * t))
+		var y := int(round(float(from_cell.y) + (float(to_cell.y) - float(from_cell.y)) * t))
+		var cell := Vector2i(x, y)
+		if walkable.has(cell) and not solid_cells.has(cell):
+			visible += 1
+	return float(visible) / float(BEAST_SIGHT_SAMPLES)
+
+func beast_can_see(from_cell: Vector2i, to_cell: Vector2i, already_hunting: bool) -> bool:
+	var threshold := BEAST_SIGHT_KEEP if already_hunting else BEAST_SIGHT_CHASE
+	return sight_visible_fraction(from_cell, to_cell) >= threshold
+
+func beast_range_cells(origin: Vector2i) -> Array:
+	# Every tile the beast can sense from its post: within BEAST_DETECT_RANGE
+	# tiles (walk distance) and with a clear enough line of sight. Used both for
+	# detection and to tint the reachable tiles red.
+	var reachable: Dictionary = { origin: 0 }
+	var queue: Array[Vector2i] = [origin]
+	var limit := int(floor(BEAST_DETECT_RANGE))
+	while not queue.is_empty():
+		var current: Vector2i = queue.pop_front()
+		var current_distance := int(reachable[current])
+		if current_distance >= limit:
+			continue
+		for direction in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
+			var neighbor: Vector2i = current + direction
+			if not walkable.has(neighbor) or water_cells.has(neighbor) or solid_cells.has(neighbor) or reachable.has(neighbor):
+				continue
+			reachable[neighbor] = current_distance + 1
+			queue.append(neighbor)
+	var cells: Array = []
+	for cell: Vector2i in reachable.keys():
+		if cell == origin or beast_can_see(origin, cell, false):
+			cells.append(cell)
+	return cells
+
 func cell_at(position: Vector2) -> Vector2i:
 	return Vector2i(int(floor(position.x)), int(floor(position.y)))
 
@@ -1943,6 +2129,22 @@ func rebuild_flow() -> void:
 				flow[neighbor] = int(flow[current]) + 1
 				queue.append(neighbor)
 
+func build_flow_from(origin: Vector2i) -> Dictionary:
+	var result: Dictionary = {}
+	if not walkable.has(origin) or water_cells.has(origin) or solid_cells.has(origin):
+		return result
+	result[origin] = 0
+	var queue: Array[Vector2i] = [origin]
+	var directions := [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]
+	while not queue.is_empty():
+		var current: Vector2i = queue.pop_front()
+		for direction in directions:
+			var neighbor: Vector2i = current + direction
+			if walkable.has(neighbor) and not water_cells.has(neighbor) and not solid_cells.has(neighbor) and not result.has(neighbor):
+				result[neighbor] = int(result[current]) + 1
+				queue.append(neighbor)
+	return result
+
 func best_flow_step(current: Vector2i) -> Vector2i:
 	var best := current
 	var best_distance := int(flow.get(current, 9999))
@@ -1959,6 +2161,10 @@ func update_enemies(delta: float) -> void:
 		enemy["attack_cooldown"] = maxf(0.0, float(enemy["attack_cooldown"]) - delta)
 		var enemy_position: Vector2 = enemy["position"]
 		var distance := enemy_position.distance_to(player_position)
+		var enemy_kind_name := String(enemy["kind"])
+		if enemy_kind_name == "roamer" or enemy_kind_name == "ambusher":
+			update_beast(enemy, delta)
+			continue
 		var is_hyena := String(enemy["kind"]) == "hyena"
 		# Hyenas drift randomly until the player wanders into scent range;
 		# then they switch to hunting. While hunting they take in speed the
@@ -2033,6 +2239,69 @@ func hyena_roam_target(enemy: Dictionary) -> Vector2:
 	if candidates.is_empty():
 		return enemy["position"]
 	return candidates[random.randi_range(0, candidates.size() - 1)]
+
+# Grassland beasts: the roamer drifts and charges anyone in range, while the
+# ambusher waits by the exit. A thrown noise maker overrides both: they run to
+# the sound until the rattle dies, then roamer wanders off and ambusher returns
+# to its post at the exit.
+func update_beast(enemy: Dictionary, delta: float) -> void:
+	var beast_position: Vector2 = enemy["position"]
+	var distance := beast_position.distance_to(player_position)
+	if distance < BEAST_ATTACK_RANGE:
+		if float(enemy["attack_cooldown"]) <= 0.0:
+			enemy["attack_cooldown"] = 0.9
+			beast_slay()
+		return
+	if noise_timer > 0.0 and not noise_flow.is_empty():
+		enemy["mode"] = "lured"
+		move_along_flow(enemy, noise_flow, float(enemy["speed"]) * 1.4, delta)
+		return
+	if distance <= BEAST_DETECT_RANGE and beast_can_see(cell_at(beast_position), cell_at(player_position), String(enemy["mode"]) == "hunt"):
+		enemy["mode"] = "hunt"
+		move_along_flow(enemy, flow, BEAST_HUNT_SPEED, delta)
+		return
+	if String(enemy["role"]) == "ambusher":
+		enemy["mode"] = "return"
+		if beast_position.distance_to(enemy["home"]) > 0.6:
+			move_along_flow(enemy, enemy.get("home_flow", {}), float(enemy["speed"]), delta)
+		return
+	enemy["mode"] = "roam"
+	var roam: Vector2 = enemy.get("roam_target", Vector2.ZERO)
+	var roam_path: Dictionary = enemy.get("roam_flow", {})
+	var beast_cell := cell_at(beast_position)
+	if roam == Vector2.ZERO or beast_position.distance_to(roam) < 0.5 or roam_path.is_empty() or not roam_path.has(beast_cell):
+		roam = hyena_roam_target(enemy)
+		enemy["roam_target"] = roam
+		roam_path = build_flow_from(cell_at(roam))
+		enemy["roam_flow"] = roam_path
+	var before_roam := beast_position
+	move_along_flow(enemy, roam_path, HYENA_ROAM_SPEED, delta)
+	if enemy["position"].distance_to(before_roam) < 0.001:
+		# Blocked by another beast or a corner: drop this target so a fresh route
+		# is picked immediately instead of grinding against the obstacle.
+		enemy["roam_target"] = Vector2.ZERO
+
+func move_along_flow(enemy: Dictionary, path: Dictionary, speed: float, delta: float) -> void:
+	if path.is_empty():
+		return
+	var position: Vector2 = enemy["position"]
+	var current := cell_at(position)
+	if not path.has(current):
+		return
+	var best := current
+	var best_distance := int(path[current])
+	for direction in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
+		var neighbor: Vector2i = current + direction
+		if path.has(neighbor) and int(path[neighbor]) < best_distance:
+			best = neighbor
+			best_distance = int(path[neighbor])
+	if best == current:
+		return
+	var target := Vector2(best) + Vector2(0.5, 0.5)
+	var movement := (target - position).normalized() * speed * delta
+	var candidate := move_with_collisions(position, movement, 0.2)
+	if can_occupy(candidate, 0.2):
+		enemy["position"] = candidate
 
 func attack() -> void:
 	if state != "playing" or attack_cooldown > 0.0:
@@ -2180,6 +2449,18 @@ func hurt_player() -> void:
 		message_timer = 99.0
 		_sfx("lose")
 
+func beast_slay() -> void:
+	# A grassland beast that reaches the player always kills — no health buffer.
+	if state != "playing":
+		return
+	health = 0
+	state = "lost"
+	message = "The beast got you — game over"
+	message_timer = 99.0
+	add_shake(1.0)
+	spawn_burst(player_position, danger_color)
+	_sfx("lose")
+
 func update_drowning(delta: float) -> void:
 	if state != "playing" or level_kind != "surface":
 		drown_timer = 0.0
@@ -2242,7 +2523,7 @@ func dark_damage() -> void:
 	if state != "playing":
 		return
 	health = maxi(0, health - 1)
-	message = "Too dark! Hold the fire mashal as your main gear."
+	message = "Too dark to see!"
 	message_timer = 1.8
 	spawn_burst(player_position, void_color.lightened(0.2), 8)
 	add_shake(0.22)
@@ -2255,6 +2536,62 @@ func dark_damage() -> void:
 
 func goggles_on() -> bool:
 	return has_desert_goggles
+
+# --- Distract the monster: noise maker throw -------------------------------
+func update_noise(delta: float) -> void:
+	if level_theme != GRASSLAND_THEME:
+		return
+	if throwing_noise:
+		throw_charge = minf(1.0, throw_charge + delta / THROW_CHARGE_TIME)
+	if noise_timer > 0.0:
+		noise_timer = maxf(0.0, noise_timer - delta)
+
+func noise_throw_distance() -> float:
+	return lerpf(THROW_MIN_RANGE, THROW_MAX_RANGE, clampf(throw_charge, 0.0, 1.0))
+
+# Where the noise maker would land: straight ahead, stopping at the last free
+# tile (walls, solid bushes and ponds block the throw).
+func noise_throw_target() -> Vector2:
+	var direction := player_facing.normalized() if player_facing.length_squared() > 0.001 else Vector2(1.0, 0.0)
+	var step := direction * 0.25
+	var cursor := player_position
+	var travelled := 0.0
+	var distance := noise_throw_distance()
+	while travelled < distance:
+		var probe := cursor + step
+		var probe_cell := cell_at(probe)
+		if not can_occupy(probe, 0.18) or water_cells.has(probe_cell):
+			break
+		cursor = probe
+		travelled += step.length()
+	return cursor
+
+func begin_noise_throw() -> void:
+	if state != "playing" or not has_noise_maker or throwing_noise:
+		return
+	throwing_noise = true
+	throw_charge = 0.0
+	message = "Charging throw — release T to hurl it"
+	message_timer = 1.4
+
+func release_noise_throw() -> void:
+	if not throwing_noise:
+		return
+	throwing_noise = false
+	if not has_noise_maker:
+		throw_charge = 0.0
+		return
+	var target := noise_throw_target()
+	has_noise_maker = false
+	throw_charge = 0.0
+	noise_position = target
+	noise_timer = NOISE_LURE_TIME
+	noise_flow = build_flow_from(cell_at(target))
+	spawn_burst(target, accent_color, 14)
+	add_shake(0.28)
+	_sfx("spirit")
+	message = "The rattle sounds — the beasts turn toward the noise"
+	message_timer = 2.6
 
 # Sandstorm visibility: a small clear pool around the player that the desert
 # goggles widen by STORM_GOGGLE_BOOST (3x). Outside the pool the storm hides
@@ -2329,11 +2666,12 @@ func collect_shards() -> void:
 			message_timer = 99.0
 			_sfx("win")
 
-const ITEM_ORDER := ["leaves", "plastic wrapper", "rope", "wood scrap", "coiled spring", "log", "flint stone", "wood", "fire mashal", "cloth", "metal scrap", "wine glass"]
+const ITEM_ORDER := ["leaves", "plastic wrapper", "rope", "pebble", "wood scrap", "coiled spring", "log", "flint stone", "wood", "fire mashal", "cloth", "metal scrap", "wine glass"]
 const ITEM_LABELS := {
 	"leaves": "LEAVES",
 	"plastic wrapper": "PLASTIC WRAPPERS",
 	"rope": "ROPE",
+	"pebble": "PEBBLES",
 	"wood scrap": "WOOD SCRAPS",
 	"coiled spring": "COILED SPRINGS",
 	"empty bottle": "EMPTY BOTTLES",
@@ -2349,6 +2687,7 @@ const ITEM_SINGULAR_LABELS := {
 	"leaves": "LEAF",
 	"plastic wrapper": "PLASTIC WRAPPER",
 	"rope": "ROPE",
+	"pebble": "PEBBLE",
 	"wood scrap": "WOOD SCRAP",
 	"coiled spring": "COILED SPRING",
 	"empty bottle": "EMPTY BOTTLE",
@@ -2410,6 +2749,12 @@ const RECIPES := [
 		"name": "DESERT GOGGLES",
 		"blurb": "Cloth, scrap metal and a wine glass see through the storm",
 		"needs": {"cloth": 2, "metal scrap": 1, "wine glass": 1},
+	},
+	{
+		"id": "noise_maker",
+		"name": "NOISE MAKER",
+		"blurb": "A bottle, a pebble and rope rattle loud enough to lure beasts",
+		"needs": {"bottles": 1, "pebble": 1, "rope": 1},
 	},
 ]
 
@@ -2735,6 +3080,8 @@ func recipe_built(index: int) -> bool:
 			return has_camp_fire
 		"desert_goggles":
 			return has_desert_goggles
+		"noise_maker":
+			return has_noise_maker
 		_:
 			return false
 
@@ -2931,6 +3278,9 @@ func build_selected() -> void:
 		"desert_goggles":
 			has_desert_goggles = true
 			message = "Desert goggles shield your eyes — the storm parts"
+		"noise_maker":
+			has_noise_maker = true
+			message = "Noise maker ready — press T to throw it"
 		_:
 			message = "Crafted!"
 	close_craft_table()
@@ -3307,13 +3657,13 @@ func update_surface_level() -> void:
 	# The night jungle cannot be crossed without light: hold the mashal as main gear.
 	if level_theme == "night_jungle" and not mashal_light_on():
 		if dark_timer <= 0.0 or message_timer <= 0.0:
-			message = "Too dark to cross — hold the fire mashal as main gear"
+			message = "Too dark to cross"
 			message_timer = 1.6
 		return
 	# The desert storm hides the way out until the goggles are crafted.
 	if level_theme == "desert_storm" and not goggles_on():
 		if dark_timer <= 0.0 or message_timer <= 0.0:
-			message = "The storm hides the way out — craft desert goggles to see it"
+			message = "Visibility low"
 			message_timer = 1.6
 		return
 	var exit_position := Vector2(exit_cell) + Vector2(0.5, 0.5)
@@ -3393,6 +3743,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		handle_camera_motion(event)
 		if camera_dragging:
 			get_viewport().set_input_as_handled()
+		return
+	if event is InputEventKey and not event.pressed and not event.echo:
+		var release_key: int = event.physical_keycode if event.physical_keycode != 0 else event.keycode
+		if release_key == KEY_T and throwing_noise:
+			release_noise_throw()
 		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		var keycode: int = event.physical_keycode if event.physical_keycode != 0 else event.keycode
@@ -3493,6 +3848,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				open_craft_table()
 			elif keycode == KEY_G:
 				handle_gear_key()
+			elif keycode == KEY_T and level_theme == GRASSLAND_THEME:
+				begin_noise_throw()
 			elif keycode == KEY_ENTER or keycode == KEY_KP_ENTER:
 				if level_theme == "radio_jungle" and try_helicopter_escape():
 					pass
@@ -3571,6 +3928,7 @@ func _draw() -> void:
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	draw_night_overlay(viewport)
 	draw_storm_overlay(viewport)
+	draw_noise_maker(viewport)
 	draw_hud(viewport)
 
 func draw_atmosphere(viewport: Vector2) -> void:
@@ -3595,6 +3953,9 @@ func draw_atmosphere(viewport: Vector2) -> void:
 func draw_surface_atmosphere(viewport: Vector2) -> void:
 	if level_theme == "desert_storm":
 		draw_desert_atmosphere(viewport)
+		return
+	if level_theme == "grassland":
+		draw_grassland_atmosphere(viewport)
 		return
 	draw_rect(Rect2(Vector2.ZERO, viewport), deep_color, true)
 	draw_colored_polygon(PackedVector2Array([
@@ -3767,6 +4128,8 @@ func grass_on_cell(cell: Vector2i) -> bool:
 		threshold = 52
 	elif level_theme == "desert_storm":
 		threshold = 0
+	elif level_theme == "grassland":
+		threshold = 78
 	return level_kind == "surface" and ((h & 0x7fffffff) % 100) < threshold
 
 func flower_on_cell(cell: Vector2i) -> bool:
@@ -3778,6 +4141,8 @@ func flower_on_cell(cell: Vector2i) -> bool:
 		threshold = 18
 	elif level_theme == "desert_storm":
 		threshold = 0
+	elif level_theme == "grassland":
+		threshold = 34
 	return level_kind == "surface" and ((h & 0x7fffffff) % 100) < threshold and grass_on_cell(cell)
 
 func flower_color(cell: Vector2i) -> Color:
@@ -3911,6 +4276,27 @@ func draw_tree(cell: Vector2i) -> void:
 		draw_rect(cut_prompt, Color(void_color, 0.92), true)
 		draw_line(cut_prompt.position, cut_prompt.position + Vector2(cut_prompt.size.x, 0), accent_color, 1.5)
 		draw_string(ui_font, cut_prompt.position + Vector2(15, 16), cut_label, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, paper_color)
+
+func draw_bush(cell: Vector2i) -> void:
+	var position := iso_to_screen(Vector2(cell) + Vector2(0.5, 0.5))
+	var sway := sin(elapsed * 1.4 + float(cell.x + cell.y)) * 2.5
+	draw_shadow(position, 36.0, 0.28)
+	var dark := wall_alt_color.darkened(0.2)
+	var mid := floor_petrol_color
+	var light := slate_light_color.lightened(0.08)
+	var c := position + Vector2(sway, -20.0)
+	# A big fluffy clump: overlapping soft puffs, lit from the top-left.
+	for puff in [Vector2(-17, 6), Vector2(17, 6), Vector2(-12, -10), Vector2(12, -10), Vector2(-5, -22), Vector2(6, -21), Vector2(0, -2)]:
+		draw_circle(c + puff, 16.0, mid)
+	draw_circle(c + Vector2(-20, 6), 13.0, dark)
+	draw_circle(c + Vector2(20, 7), 13.0, dark)
+	draw_circle(c + Vector2(-8, -24), 13.0, light)
+	draw_circle(c + Vector2(7, -25), 12.0, light)
+	draw_circle(c + Vector2(0, -30), 10.0, light.lightened(0.08))
+	# Berries tucked into the fluff.
+	draw_circle(c + Vector2(-14, -6), 2.6, danger_color.lightened(0.2))
+	draw_circle(c + Vector2(10, -14), 2.4, accent_color)
+	draw_circle(c + Vector2(1, -30), 2.0, danger_color.lightened(0.2))
 
 func draw_stone(cell: Vector2i) -> void:
 	var center := iso_to_screen(Vector2(cell) + Vector2(0.5, 0.5))
@@ -4077,6 +4463,12 @@ func draw_depth_sorted() -> void:
 			"kind": "tree",
 			"cell": tree_cell,
 		})
+	for bush_cell in bush_cells:
+		drawables.append({
+			"depth": iso_to_screen(Vector2(bush_cell) + Vector2(0.5, 0.5)).y,
+			"kind": "bush",
+			"cell": bush_cell,
+		})
 	for stone_cell in stone_cells:
 		drawables.append({
 			"depth": iso_to_screen(Vector2(stone_cell) + Vector2(0.5, 0.5)).y,
@@ -4186,6 +4578,9 @@ func draw_depth_sorted() -> void:
 			"tree":
 				var tree_cell: Vector2i = drawable["cell"]
 				draw_tree(tree_cell)
+			"bush":
+				var bush_cell: Vector2i = drawable["cell"]
+				draw_bush(bush_cell)
 			"stone":
 				var stone_cell: Vector2i = drawable["cell"]
 				draw_stone(stone_cell)
@@ -4421,6 +4816,8 @@ func draw_litter_item(item: Dictionary) -> void:
 			draw_plastic_wrapper(position + Vector2(0, -4 + bob))
 		"rope":
 			draw_rope_coil(position + Vector2(0, -3 + bob))
+		"pebble":
+			draw_flint_stone(position + Vector2(0, -5 + bob))
 		"wood scrap":
 			draw_wood_scrap(position + Vector2(0, -4 + bob))
 		"wood":
@@ -4476,6 +4873,8 @@ func draw_item_icon(kind: String, center: Vector2) -> void:
 			draw_plastic_wrapper(center)
 		"rope":
 			draw_rope_coil(center)
+		"pebble":
+			draw_flint_stone(center)
 		"wood scrap":
 			draw_wood_scrap(center)
 		"wood":
@@ -4692,6 +5091,39 @@ func draw_desert_atmosphere(viewport: Vector2) -> void:
 			var gx := x + float(grain) * 34.0
 			draw_circle(Vector2(gx + fposmod(elapsed * 130.0, 60.0), y + float(grain) * 9.0), 1.1, Color(accent_color, 0.35))
 
+func draw_grassland_atmosphere(viewport: Vector2) -> void:
+	# Soft green sky over rolling meadow ridges and drifting pollen.
+	draw_rect(Rect2(Vector2.ZERO, viewport), deep_color, true)
+	draw_circle(Vector2(980.0, 92.0), 46.0, Color(accent_color, 0.55))
+	draw_circle(Vector2(980.0, 92.0), 74.0, Color(accent_color, 0.12))
+	draw_colored_polygon(PackedVector2Array([
+		Vector2(0, 330),
+		Vector2(180, 250),
+		Vector2(380, 320),
+		Vector2(560, 236),
+		Vector2(760, 318),
+		Vector2(950, 246),
+		Vector2(viewport.x, 330),
+		Vector2(viewport.x, viewport.y),
+		Vector2(0, viewport.y),
+	]), Color(floor_petrol_color, 0.55))
+	draw_colored_polygon(PackedVector2Array([
+		Vector2(0, 410),
+		Vector2(260, 318),
+		Vector2(520, 408),
+		Vector2(800, 312),
+		Vector2(viewport.x, 414),
+		Vector2(viewport.x, viewport.y),
+		Vector2(0, viewport.y),
+	]), Color(wall_alt_color, 0.8))
+	for index in range(22):
+		var point := Vector2(
+			fposmod(float(index) * 197.0 + elapsed * 9.0, viewport.x),
+			fposmod(float(index) * 281.0 + elapsed * 5.0, viewport.y)
+		)
+		var drift := sin(elapsed * 0.8 + float(index)) * 4.0
+		draw_circle(point + Vector2(drift, 0), 1.4, Color(accent_color, 0.3))
+
 func draw_storm_overlay(viewport: Vector2) -> void:
 	if level_theme != "desert_storm":
 		return
@@ -4750,6 +5182,31 @@ func draw_storm_overlay(viewport: Vector2) -> void:
 	# Blind inside the gate storm: the sand is total, nothing shows through.
 	if gate_storm_blind():
 		draw_rect(Rect2(Vector2.ZERO, viewport), Color(shade, 0.98), true)
+
+func noise_world_to_screen(world_position: Vector2) -> Vector2:
+	return CAMERA_PIVOT + camera_offset + screen_shake + iso_to_screen(world_position) * camera_zoom
+
+# Aim reticle while charging a throw, and the ringing noise once it lands.
+func draw_noise_maker(_viewport: Vector2) -> void:
+	if level_theme != GRASSLAND_THEME:
+		return
+	var player_screen := noise_world_to_screen(player_position)
+	if throwing_noise and has_noise_maker:
+		var target := noise_throw_target()
+		var target_screen := noise_world_to_screen(target)
+		var reach := noise_throw_distance()
+		draw_line(player_screen, target_screen, Color(accent_color, 0.5), 2.0)
+		draw_circle(target_screen, 10.0 + (1.0 - throw_charge) * 8.0, Color(accent_color, 0.22))
+		draw_arc(target_screen, 13.0, 0.0, TAU, 20, Color(paper_color, 0.7), 1.6, true)
+		var info := "THROW %.1f" % reach
+		draw_string(ui_font, target_screen + Vector2(-24, -22), info, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, paper_color)
+	if noise_timer > 0.0:
+		var noise_screen := noise_world_to_screen(noise_position)
+		var fade := clampf(noise_timer / NOISE_LURE_TIME, 0.0, 1.0)
+		draw_circle(noise_screen, 6.0, Color(accent_color, 0.85))
+		for ring in range(3):
+			var ripple := fposmod(elapsed * 0.9 + float(ring) / 3.0, 1.0)
+			draw_arc(noise_screen, 12.0 + ripple * 46.0, 0.0, TAU, 28, Color(accent_color, (1.0 - ripple) * 0.5 * fade), 2.0, true)
 
 func draw_surface_exit() -> void:
 	var position := iso_to_screen(Vector2(exit_cell) + Vector2(0.5, 0.5))
@@ -5288,6 +5745,8 @@ func draw_enemy(index: int) -> void:
 		# the fight reads clearly even through the storm.
 		var pulse := 5.0 + sin(elapsed * 4.0 + float(enemy["phase"])) * 2.0
 		draw_circle(position + Vector2(0, -16), 22.0 + pulse, Color(danger_color, 0.15))
+	if String(enemy["kind"]) == "roamer" or String(enemy["kind"]) == "ambusher":
+		draw_beast_range(enemy)
 	match String(enemy["kind"]):
 		"mireling":
 			draw_mireling(enemy, position, bob)
@@ -5297,8 +5756,25 @@ func draw_enemy(index: int) -> void:
 			draw_astral_sentry(enemy, position, bob)
 		"hyena":
 			draw_hyena(enemy, position, bob)
+		"roamer":
+			draw_beast(enemy, position, bob, false)
+		"ambusher":
+			draw_beast(enemy, position, bob, true)
 		_:
 			draw_shardling(enemy, position, bob)
+
+func draw_beast_range(enemy: Dictionary) -> void:
+	# Tint every tile the beast can sense from its post: a red diamond per
+	# reachable tile, brighter while it is actively hunting. Walls, gaps and
+	# blocked sight lines stay untinted, so the shape reads as the real range.
+	var origin := cell_at(enemy["home"]) if String(enemy["kind"]) == "ambusher" else cell_at(enemy["position"])
+	var hunting := String(enemy["mode"]) == "hunt"
+	var fill := Color(danger_color, 0.30 if hunting else 0.16)
+	var edge := Color(danger_color.lightened(0.15), 0.9 if hunting else 0.5)
+	for cell: Vector2i in beast_range_cells(origin):
+		var diamond := tile_polygon(cell)
+		draw_colored_polygon(diamond, fill)
+		draw_polyline(diamond, edge, 1.6 if hunting else 1.0, true)
 
 func draw_shardling(enemy: Dictionary, position: Vector2, bob: float) -> void:
 	var body_center := position + Vector2(0, -28 + bob)
@@ -5475,6 +5951,70 @@ func draw_hyena(enemy: Dictionary, position: Vector2, bob: float) -> void:
 			var back := body + Vector2(-13.0 - float(s) * 9.0, -5.0 + float(s) * 4.0)
 			var streak_len := 12.0 + chase * 14.0 + float(s) * 4.0
 			draw_line(back, back + Vector2(-streak_len, -2.0 - float(s)), Color(paper_color, streak_alpha), 1.6)
+
+# The two grassland beasts. The roamer is a bulky grazer that charges intruders;
+# the ambusher is a lean croucher that waits by the exit. Same skeleton, told
+# apart by build, stance and eyes.
+func draw_beast(enemy: Dictionary, position: Vector2, bob: float, ambusher: bool) -> void:
+	var phase := float(enemy["phase"])
+	var lunge := sin(elapsed * 6.0 + phase) * 2.5
+	var color := paper_color if float(enemy["hit_flash"]) > 0.0 else enemy_color
+	var dark := enemy_color.darkened(0.4)
+	var y_offset := -12.0 if ambusher else -10.0
+	var body := position + Vector2(0, y_offset + bob)
+	draw_shadow(position, 27.0 if not ambusher else 24.0, 0.34)
+	var leg_swing := sin(elapsed * 10.0 + phase) * 4.0
+	for leg_x in [-10.0, 9.0]:
+		draw_line(body + Vector2(leg_x, -1), body + Vector2(leg_x + leg_swing * 0.5, 7), dark, 4.5)
+	if not ambusher:
+		# Heavy shoulders on the grazer.
+		draw_colored_polygon(PackedVector2Array([
+			body + Vector2(-17, -4),
+			body + Vector2(-11, -22),
+			body + Vector2(11, -21),
+			body + Vector2(17, -4),
+		]), color)
+		draw_colored_polygon(PackedVector2Array([
+			body + Vector2(-11, -22),
+			body + Vector2(0, -27),
+			body + Vector2(11, -21),
+		]), color.lightened(0.14))
+		# Tusked snout.
+		draw_colored_polygon(PackedVector2Array([
+			body + Vector2(11, -18),
+			body + Vector2(17, -22),
+			body + Vector2(30, -12 + lunge * 0.3),
+			body + Vector2(28, -6),
+			body + Vector2(16, -5),
+		]), color.darkened(0.1))
+		draw_line(body + Vector2(27, -9), body + Vector2(31, -5), paper_color, 2.4)
+		draw_circle(body + Vector2(22, -14 + lunge * 0.3), 2.0, enemy_accent_color)
+	else:
+		# Lean crouched frame, ready to pounce.
+		draw_colored_polygon(PackedVector2Array([
+			body + Vector2(-16, -2),
+			body + Vector2(-8, -16),
+			body + Vector2(10, -16),
+			body + Vector2(15, -2),
+		]), color)
+		draw_colored_polygon(PackedVector2Array([
+			body + Vector2(-8, -16),
+			body + Vector2(-2, -20),
+			body + Vector2(9, -15),
+		]), color.lightened(0.16))
+		draw_line(body + Vector2(-14, -10), body + Vector2(-22, -16), dark, 3.0)
+		# Low head, jaw open.
+		draw_colored_polygon(PackedVector2Array([
+			body + Vector2(10, -15),
+			body + Vector2(16, -19),
+			body + Vector2(27, -11 + lunge * 0.5),
+			body + Vector2(26, -4),
+			body + Vector2(14, -5),
+		]), color.darkened(0.14))
+		draw_line(body + Vector2(24, -9 + lunge * 0.5), body + Vector2(20, -5), dark, 1.8)
+		draw_circle(body + Vector2(21, -13 + lunge * 0.4), 2.2, enemy_accent_color)
+		draw_circle(body + Vector2(21, -13 + lunge * 0.4), 4.0, Color(enemy_accent_color, 0.22))
+		draw_circle(body + Vector2(15, -12), 1.4, Color(enemy_accent_color, 0.45))
 
 func draw_station() -> void:
 	var position := iso_to_screen(station_position())
@@ -5789,6 +6329,10 @@ func enemy_display_name(kind: String) -> String:
 			return "ASTRAL SENTRY"
 		"hyena":
 			return "HYENA"
+		"roamer":
+			return "GRAZER"
+		"ambusher":
+			return "STALKER"
 		_:
 			return "SHARDLING"
 
@@ -6066,6 +6610,8 @@ func draw_hud(viewport: Vector2) -> void:
 			draw_radio_plaque(Rect2(viewport.x - 254, 24, 224, 118))
 		elif level_theme == "desert_storm":
 			draw_storm_plaque(shard_rect)
+		elif level_theme == "grassland":
+			draw_noise_plaque(shard_rect)
 		else:
 			draw_bottle_plaque(shard_rect)
 	else:
@@ -6087,6 +6633,8 @@ func draw_hud(viewport: Vector2) -> void:
 		else:
 			draw_hud_diamond(center, 10.0, Color(muted_color, 0.2))
 	var controls := "WASD MOVE  SHIFT RUN  SPACE JUMP  ENTER STRIKE  F SEARCH/PICK  B TABLE  G WEAR/DROP  L LEVELS  P PAUSE  R RESTART" if level_kind == "surface" else "WASD MOVE  ENTER STRIKE  G PICK/DROP  DRAG PAN  WHEEL ZOOM  Q/E YAW  C RESET  L LEVELS  P PAUSE  R RESTART"
+	if level_theme == GRASSLAND_THEME:
+		controls = "WASD MOVE  ENTER STRIKE  F SEARCH/PICK  B TABLE  T THROW NOISE MAKER  L LEVELS  P PAUSE  R RESTART"
 	var controls_size := ui_font.get_string_size(controls, HORIZONTAL_ALIGNMENT_LEFT, -1, 13)
 	var controls_rect := Rect2(viewport.x - controls_size.x - 68, viewport.y - 54, controls_size.x + 38, 30)
 	draw_plaque(controls_rect, slate_light_color)
@@ -6123,7 +6671,7 @@ func draw_storm_plaque(rect: Rect2) -> void:
 	var goggles_on := goggles_on()
 	draw_circle(rect.position + Vector2(34, 58), 8.0, accent_color if goggles_on else Color(muted_color, 0.35))
 	draw_line(rect.position + Vector2(26, 58), rect.position + Vector2(42, 58), accent_color if goggles_on else Color(muted_color, 0.35), 3.0)
-	draw_string(ui_font, rect.position + Vector2(52, 63), "GOGGLES ON — 3x VISIBILITY" if goggles_on else "BLINDED — CRAFT GOGGLES", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, accent_color if goggles_on else muted_color)
+	draw_string(ui_font, rect.position + Vector2(52, 63), "GOGGLES ON — 3x VISIBILITY" if goggles_on else "VISIBILITY LOW", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, accent_color if goggles_on else muted_color)
 	draw_line(rect.position + Vector2(18, 78), rect.position + Vector2(rect.size.x - 18, 78), Color(muted_color, 0.4), 1.0)
 	var footer := "STORM HIDES HYENAS"
 	var footer_color := muted_color
@@ -6135,6 +6683,21 @@ func draw_storm_plaque(rect: Rect2) -> void:
 			footer = "GATE STORM — BLIND, TURN BACK"
 			footer_color = danger_color
 	draw_string(ui_font, rect.position + Vector2(18, 95), footer, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, footer_color)
+
+func draw_noise_plaque(rect: Rect2) -> void:
+	draw_plaque(rect, accent_color)
+	draw_string(ui_font, rect.position + Vector2(18, 25), "DISTRACTION", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, muted_color)
+	draw_string(ui_font, rect.position + Vector2(18, 52), "NOISE MAKER" if has_noise_maker else "NO NOISE MAKER", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, accent_color if has_noise_maker else muted_color)
+	draw_line(rect.position + Vector2(18, 66), rect.position + Vector2(rect.size.x - 18, 66), Color(muted_color, 0.4), 1.0)
+	var footer := "BEASTS ROAM THE MEADOW"
+	var footer_color := muted_color
+	if noise_timer > 0.0:
+		footer = "BEASTS LURED TO THE NOISE"
+		footer_color = safe_color
+	elif throwing_noise:
+		footer = "CHARGING THROW — RELEASE T"
+		footer_color = accent_color
+	draw_string(ui_font, rect.position + Vector2(18, 84), footer, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, footer_color)
 
 func draw_bottle_plaque(rect: Rect2) -> void:
 	draw_plaque(rect, safe_color)
