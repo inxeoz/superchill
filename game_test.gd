@@ -133,6 +133,9 @@ func run_test() -> void:
 	if not validate_gear_switch():
 		quit(1)
 		return
+	if not validate_jungle_craft():
+		quit(1)
+		return
 	if not validate_occlusion_reveal():
 		quit(1)
 		return
@@ -762,6 +765,141 @@ func validate_surface_level() -> bool:
 	game.update_surface_level()
 	return game.level_index == 1 and game.level_name == "FACETED DEPTHS"
 
+
+func validate_jungle_craft() -> bool:
+	var jungle_index: int = game.LEVELS.size() - 1
+	game.load_level(jungle_index)
+	# The axe rests on reachable land near the start of the jungle level.
+	if not game.axe_on_ground or game.has_axe:
+		return false
+	var axe_cell: Vector2i = game.cell_at(game.axe_position)
+	if not game.walkable.has(axe_cell) or game.axe_position.distance_to(Vector2(game.start_cell) + Vector2(0.5, 0.5)) > 2.5:
+		return false
+	# A spirit of logs sits somewhere on the map beside the fishing-catcher spirit.
+	var logs_spirit: Dictionary = {}
+	for spirit: Dictionary in game.spirits:
+		if String(spirit["recipe"]) == "logs":
+			logs_spirit = spirit
+	if logs_spirit.is_empty() or game.spirits.size() < 2:
+		return false
+	# G-style gear pickup equips the axe and makes it the main weapon.
+	game.player_position = game.axe_position
+	if not game._pickup_gear("axe"):
+		return false
+	if not game.has_axe or game.axe_on_ground or game.active_weapon != "axe":
+		return false
+	# The axe is a weapon: it can be set as main gear and dropped/re-equipped.
+	if not game._is_weapon("axe"):
+		return false
+	# Cutting a tree with the axe drops logs and opens the cell.
+	var trees_before: int = game.tree_cells.size()
+	var tree_cell: Vector2i = game.tree_cells[0]
+	game.player_position = Vector2(tree_cell) + Vector2(-0.5, 0.5)
+	var effects_after_pickup: int = game.effects.size()
+	if not game.try_cut_tree():
+		return false
+	if game.tree_cells.size() != trees_before - 1 or game.solid_cells.has(tree_cell):
+		return false
+	if game.effects.size() != effects_after_pickup + 1:
+		return false
+	var log_count := 0
+	for item: Dictionary in game.litter:
+		if String(item["kind"]) == "log":
+			log_count += 1
+	if log_count < 3:
+		return false
+	# ENTER with the axe near a tree cuts instead of swinging: no strike arc.
+	game.attack_cooldown = 0.0
+	var effects_before_cut: int = game.effects.size()
+	var trees_before_cut: int = game.tree_cells.size()
+	game.player_position = Vector2(game.tree_cells[0]) + Vector2(-0.5, 0.5)
+	game.attack()
+	if game.tree_cells.size() != trees_before_cut - 1 or game.effects.size() != effects_before_cut + 1:
+		return false
+	# With no tree in reach the axe swings (one slash effect).
+	game.attack_cooldown = 0.0
+	game.player_position = Vector2(game.start_cell) + Vector2(0.5, 0.5)
+	var effects_before_swing: int = game.effects.size()
+	game.attack()
+	if game.effects.size() != effects_before_swing + 1:
+		return false
+	if String(game.effects[game.effects.size() - 1]["kind"]) != "slash":
+		return false
+	# The spirit of logs unlocks both the boat and fire ideas.
+	game.player_position = logs_spirit["position"]
+	if not game.try_collect_spirit():
+		return false
+	if not game.unlocked_ideas.has("boat") or not game.unlocked_ideas.has("fire"):
+		return false
+	# The jungle distributes exactly three ropes.
+	game.load_level(jungle_index)
+	var rope_total := 0
+	for item: Dictionary in game.litter:
+		if String(item["kind"]) == "rope":
+			rope_total += 1
+	if rope_total != 3:
+		return false
+	# Boat recipe: 3 ropes + 3 logs. Building drops the boat at your feet.
+	var boat_index: int = game.recipe_index_for_id("boat")
+	if boat_index < 0 or int(game.recipe_needs(boat_index)["rope"]) != 3 or int(game.recipe_needs(boat_index)["log"]) != 3:
+		return false
+	game.item_inventory["rope"] = 3
+	game.item_inventory["log"] = 3
+	game.open_craft_table()
+	var visible: Array = game.craft_visible_elements()
+	var log_pos := -1
+	for i in range(visible.size()):
+		if game.craft_element_kind(visible[i]) == "log":
+			log_pos = i
+	if log_pos < 0:
+		return false
+	game.craft_selected = log_pos
+	game.refresh_recipe_index()
+	if game.recipe_index != boat_index:
+		return false
+	game.build_selected()
+	if game.state != "playing" or not game.boat_on_ground or game.has_boat:
+		return false
+	if int(game.item_inventory.get("rope", 0)) != 0 or int(game.item_inventory.get("log", 0)) != 0:
+		return false
+	# G picks the boat up; worn, the river no longer drowns.
+	game.player_position = game.boat_position
+	if not game._pickup_gear("boat"):
+		return false
+	if not game.has_boat or game.boat_on_ground:
+		return false
+	var health_before: int = game.health
+	game.player_position = Vector2(17.5, 8.5)
+	game.update_drowning(0.5)
+	if game.health != health_before:
+		return false
+	# Dropping the boat leaves it for G pickup, and the river drowns again.
+	game._drop_gear("boat")
+	if game.has_boat or not game.boat_on_ground:
+		return false
+	game.player_position = Vector2(17.5, 8.5)
+	game.update_drowning(0.5)
+	if game.health != health_before - 1:
+		return false
+	# Fire builds from a single wood scrap once its idea is unlocked.
+	game.load_level(jungle_index)
+	game.unlocked_ideas["boat"] = true
+	game.unlocked_ideas["fire"] = true
+	game.item_inventory["wood scrap"] = 1
+	game.open_craft_table()
+	visible = game.craft_visible_elements()
+	var scrap_pos := -1
+	for i in range(visible.size()):
+		if game.craft_element_kind(visible[i]) == "wood scrap":
+			scrap_pos = i
+	if scrap_pos < 0:
+		return false
+	game.craft_selected = scrap_pos
+	game.refresh_recipe_index()
+	if game.recipe_index != game.recipe_index_for_id("fire"):
+		return false
+	game.build_selected()
+	return game.has_fire and game.state == "playing" and int(game.item_inventory.get("wood scrap", 0)) == 0
 
 func validate_jungle_level() -> bool:
 	game.load_level(game.LEVELS.size() - 1)

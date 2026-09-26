@@ -25,6 +25,7 @@ const ITEM_PHRASES := {
 	"wood scrap": "a scrap of wood",
 	"coiled spring": "a coiled spring",
 	"empty bottle": "an empty bottle",
+	"log": "a log of wood",
 }
 const ITEM_PLURALS := {
 	"leaves": "leaves",
@@ -33,6 +34,7 @@ const ITEM_PLURALS := {
 	"wood scrap": "wood scraps",
 	"coiled spring": "coiled springs",
 	"empty bottle": "empty bottles",
+	"log": "logs of wood",
 }
 const DEFAULT_CAMERA_ZOOM := 1.08
 const CAMERA_ZOOM_MIN := 0.55
@@ -279,9 +281,13 @@ const LEVELS := [
 		"shards": [],
 		"spawns": [],
 		"trees": [Vector2i(3, 6), Vector2i(5, 4), Vector2i(7, 5), Vector2i(11, 6), Vector2i(13, 5), Vector2i(4, 9), Vector2i(6, 8), Vector2i(8, 9), Vector2i(10, 8), Vector2i(12, 9), Vector2i(14, 6), Vector2i(2, 8), Vector2i(5, 11), Vector2i(9, 11), Vector2i(13, 9)],
-		"spirits": [{"cell": Vector2i(15, 5), "recipe": "fishing_catcher"}],
+		"axe_cell": Vector2i(3, 11),
+		"spirits": [
+			{"cell": Vector2i(15, 5), "recipe": "fishing_catcher"},
+			{"cell": Vector2i(12, 10), "recipe": "logs"},
+		],
 		"start": Vector2i(2, 11),
-		"exit": Vector2i(10, 5),
+		"exit": Vector2i(20, 10),
 		"void": "08150f",
 		"deep": "0e2417",
 		"ink": "143520",
@@ -841,6 +847,54 @@ const PLAYER_PIXELS := {
 		"..0E0..",
 		"...0...",
 	]},
+	"axe_ne": {"ox": 24, "oy": 26, "rows": [
+		"0000......",
+		"0KKK0.....",
+		"0KIIIK0...",
+		"0K0K0.....",
+		"0G0K0.....",
+		"0G0.......",
+		"0G0.......",
+		"0G0.......",
+		"0A0.......",
+		"0.........",
+	]},
+	"axe_se": {"ox": 25, "oy": 23, "rows": [
+		"..000.....",
+		".0KKK0....",
+		".0KIIIK0..",
+		"..0K0K0...",
+		"..0G0K0...",
+		"...0G0....",
+		"...0G0....",
+		"...0G0....",
+		"...0A0....",
+		"....0.....",
+	]},
+	"axe_sw": {"ox": 17, "oy": 28, "rows": [
+		".....000..",
+		"....0KKK0.",
+		"..0KIIIK0.",
+		"...0K0K0..",
+		"...0K0G0..",
+		"....0G0...",
+		"....0G0...",
+		"....0G0...",
+		"....0A0...",
+		".....0....",
+	]},
+	"axe_nw": {"ox": 30, "oy": 20, "rows": [
+		"......0000",
+		".....0KKK0",
+		"...0KIIIK0",
+		".....0K0K0",
+		".....0K0G0",
+		".......0G0",
+		".......0G0",
+		".......0G0",
+		".......0A0",
+		"........0",
+	]},
 }
 
 var void_color := Color("060914")
@@ -892,6 +946,13 @@ var sword_on_ground := false
 var sword_position := Vector2.ZERO
 var has_shotgun := false
 var shotgun_drops: Array = []
+var has_axe := false
+var axe_on_ground := false
+var axe_position := Vector2.ZERO
+var has_boat := false
+var boat_on_ground := false
+var boat_position := Vector2.ZERO
+var has_fire := false
 var active_weapon := "sword"
 var drop_selected := 0
 var drop_gear_ids: Array = []
@@ -927,6 +988,7 @@ const SFX_FILES := {
 	"craft_build": "mech/mech_003.wav",
 	"craft_fail": "ui/ui_008.wav",
 	"equip": "mech/mech_001.wav",
+	"chop": "hit/hit_001.wav",
 	"jump": "jump/jump_000.wav",
 	"menu_move": "rpg/rpg_menu-move.wav",
 	"menu_confirm": "rpg/rpg_menu-confirm.wav",
@@ -1135,7 +1197,7 @@ func load_level(index: int) -> void:
 	shard_cells = configured_shards
 	var configured_spawns: Array = level["spawns"]
 	enemy_spawns = configured_spawns
-	tree_cells = level.get("trees", [])
+	tree_cells = (level.get("trees", []) as Array).duplicate()
 	start_cell = Vector2i(level["start"])
 	exit_cell = Vector2i(level["exit"])
 	enemy_kind = String(level.get("enemy_kind", "shardling"))
@@ -1159,7 +1221,18 @@ func load_level(index: int) -> void:
 	sword_position = Vector2.ZERO
 	has_shotgun = false
 	shotgun_drops.clear()
+	has_axe = false
+	axe_on_ground = false
+	axe_position = Vector2.ZERO
+	has_boat = false
+	boat_on_ground = false
+	boat_position = Vector2.ZERO
+	has_fire = false
 	active_weapon = "sword"
+	var axe_cell: Vector2i = level.get("axe_cell", Vector2i(-1, -1))
+	if axe_cell.x >= 0:
+		axe_on_ground = true
+		axe_position = Vector2(axe_cell) + Vector2(0.5, 0.5)
 	if level_theme == "jungle":
 		shotgun_drops = find_gun_drop_cells(2)
 	elif level_kind != "surface":
@@ -1218,7 +1291,7 @@ func load_level(index: int) -> void:
 			continue
 		if spirit_cells.has(spirit_cell):
 			continue
-		if recipe_index_for_id(recipe_id) < 0:
+		if recipe_id != "logs" and recipe_index_for_id(recipe_id) < 0:
 			continue
 		if seen_recipe_ids.has(recipe_id):
 			continue
@@ -1254,7 +1327,8 @@ func distribute_surface_items() -> void:
 	var bag: Array = []
 	for i in range(20):
 		bag.append("empty bottle")
-	for i in range(2):
+	var rope_count := 3 if level_theme == "jungle" else 2
+	for i in range(rope_count):
 		bag.append("rope")
 	for i in range(1):
 		bag.append("wood scrap")
@@ -1270,13 +1344,14 @@ func distribute_surface_items() -> void:
 	var queue: Array = [start_cell]
 	var directions := [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]
 	var candidates: Array = []
+	var axe_block := cell_at(axe_position) if axe_on_ground else Vector2i(-1, -1)
 	while not queue.is_empty():
 		var current: Vector2i = queue.pop_front()
-		if walkable.has(current) and not water_cells.has(current) and not solid_cells.has(current) and not spirit_cells.has(current) and current != start_cell:
+		if walkable.has(current) and not water_cells.has(current) and not solid_cells.has(current) and not spirit_cells.has(current) and current != start_cell and current != axe_block:
 			candidates.append(current)
 		for direction in directions:
 			var neighbor: Vector2i = current + direction
-			if walkable.has(neighbor) and not water_cells.has(neighbor) and not solid_cells.has(neighbor) and not spirit_cells.has(neighbor) and not seen.has(neighbor):
+			if walkable.has(neighbor) and not water_cells.has(neighbor) and not solid_cells.has(neighbor) and not spirit_cells.has(neighbor) and neighbor != axe_block and not seen.has(neighbor):
 				seen[neighbor] = true
 				queue.append(neighbor)
 	# Random layout: one item per cell, blended kinds.
@@ -1376,9 +1451,11 @@ func _recompute_active_weapon() -> void:
 	# Keep the active weapon valid after a drop: fall back to the other held
 	# weapon, or clear it when the last weapon is gone.
 	if active_weapon == "sword" and not has_sword:
-		active_weapon = "shotgun" if has_shotgun else ""
+		active_weapon = "shotgun" if has_shotgun else ("axe" if has_axe else "")
 	elif active_weapon == "shotgun" and not has_shotgun:
-		active_weapon = "sword" if has_sword else ""
+		active_weapon = "sword" if has_sword else ("axe" if has_axe else "")
+	elif active_weapon == "axe" and not has_axe:
+		active_weapon = "sword" if has_sword else ("shotgun" if has_shotgun else "")
 
 func _process(delta: float) -> void:
 	if paused:
@@ -1427,7 +1504,7 @@ func update_player(delta: float) -> void:
 		).normalized().rotated(-camera_angle)
 		var before_move := player_position
 		player_position = move_with_collisions(player_position, world_direction * PLAYER_SPEED * delta, 0.22)
-		if level_kind == "surface" and not has_life_jacket and water_cells.has(cell_at(player_position)):
+		if level_kind == "surface" and not has_life_jacket and not has_boat and water_cells.has(cell_at(player_position)):
 			if drown_timer <= 0.0 or message_timer <= 0.0:
 				message = "You're in deep water — get back or drown!"
 				message_timer = 1.6
@@ -1523,6 +1600,21 @@ func attack() -> void:
 	if active_weapon == "shotgun" and has_shotgun:
 		attack_cooldown = SHOTGUN_COOLDOWN
 		fire_shotgun()
+		return
+	if active_weapon == "axe" and has_axe:
+		if try_cut_tree():
+			return
+		attack_cooldown = ATTACK_COOLDOWN
+		effects.append({
+			"kind": "slash",
+			"position": player_position,
+			"direction": player_facing,
+			"age": 0.0,
+			"life": 0.2,
+			"phase": 0.0,
+			"color": accent_color,
+		})
+		_sfx("attack")
 		return
 	if not (active_weapon == "sword" and has_sword):
 		message = "No main weapon selected — pick up your sword"
@@ -1620,7 +1712,7 @@ func update_drowning(delta: float) -> void:
 	if state != "playing" or level_kind != "surface":
 		drown_timer = 0.0
 		return
-	if not has_life_jacket and water_cells.has(cell_at(player_position)):
+	if not has_life_jacket and not has_boat and water_cells.has(cell_at(player_position)):
 		drown_timer += delta
 		if drown_timer >= DROWN_INTERVAL:
 			drown_timer = 0.0
@@ -1668,7 +1760,7 @@ func collect_shards() -> void:
 			message_timer = 99.0
 			_sfx("win")
 
-const ITEM_ORDER := ["leaves", "plastic wrapper", "rope", "wood scrap", "coiled spring"]
+const ITEM_ORDER := ["leaves", "plastic wrapper", "rope", "wood scrap", "coiled spring", "log"]
 const ITEM_LABELS := {
 	"leaves": "LEAVES",
 	"plastic wrapper": "PLASTIC WRAPPERS",
@@ -1676,6 +1768,7 @@ const ITEM_LABELS := {
 	"wood scrap": "WOOD SCRAPS",
 	"coiled spring": "COILED SPRINGS",
 	"empty bottle": "EMPTY BOTTLES",
+	"log": "LOGS",
 }
 const ITEM_SINGULAR_LABELS := {
 	"leaves": "LEAF",
@@ -1684,6 +1777,7 @@ const ITEM_SINGULAR_LABELS := {
 	"wood scrap": "WOOD SCRAP",
 	"coiled spring": "COILED SPRING",
 	"empty bottle": "EMPTY BOTTLE",
+	"log": "LOG",
 }
 # Buildable recipes. "bottles" groups every empty bottle source; other keys
 # are item kinds (ITEM_ORDER). Add a new entry here to offer another build.
@@ -1699,6 +1793,18 @@ const RECIPES := [
 		"name": "FISHING CATCHER",
 		"blurb": "An empty bottle and some rope for a river catch",
 		"needs": {"bottles": 1, "rope": 1},
+	},
+	{
+		"id": "boat",
+		"name": "BOAT",
+		"blurb": "Three ropes and three logs for the river crossing",
+		"needs": {"rope": 3, "log": 3},
+	},
+	{
+		"id": "fire",
+		"name": "FIRE",
+		"blurb": "One scrap of wood for a warm fire",
+		"needs": {"wood scrap": 1},
 	},
 ]
 
@@ -1757,6 +1863,49 @@ func pick_litter_kind(pick_kind: String) -> int:
 		add_shake(0.1)
 	return picked
 
+func nearest_tree_index() -> int:
+	var best := -1
+	var best_distance := SOURCE_REACH
+	for index in range(tree_cells.size()):
+		var distance := player_position.distance_to(Vector2(tree_cells[index]) + Vector2(0.5, 0.5))
+		if distance <= best_distance:
+			best = index
+			best_distance = distance
+	return best
+
+func try_cut_tree() -> bool:
+	if state != "playing" or level_kind != "surface":
+		return false
+	var index := nearest_tree_index()
+	if index < 0:
+		return false
+	attack_cooldown = ATTACK_COOLDOWN
+	var tree_cell: Vector2i = tree_cells[index]
+	tree_cells.remove_at(index)
+	solid_cells.erase(tree_cell)
+	var drop_cells: Array[Vector2i] = [tree_cell]
+	for direction in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
+		if drop_cells.size() >= 3:
+			break
+		var neighbor: Vector2i = tree_cell + direction
+		if not walkable.has(neighbor) or water_cells.has(neighbor) or solid_cells.has(neighbor):
+			continue
+		if litter.any(func(item): return cell_at(item["position"]) == neighbor):
+			continue
+		drop_cells.append(neighbor)
+	for i in range(drop_cells.size()):
+		litter.append({
+			"kind": "log",
+			"position": Vector2(drop_cells[i]) + Vector2(0.5, 0.5),
+			"phase": float(litter.size()) * 1.1,
+		})
+	message = "You cut the tree — logs tumble down"
+	message_timer = 2.4
+	spawn_burst(Vector2(tree_cell) + Vector2(0.5, 0.5), accent_color, 12)
+	add_shake(0.3)
+	_sfx("chop")
+	return true
+
 func try_collect_spirit() -> bool:
 	if state != "playing" or level_kind != "surface":
 		return false
@@ -1767,10 +1916,15 @@ func try_collect_spirit() -> bool:
 		if player_position.distance_to(spirit["position"]) > SOURCE_REACH:
 			continue
 		spirit["taken"] = true
-		var recipe_i := recipe_index_for_id(String(spirit["recipe"]))
-		if recipe_i >= 0:
-			unlocked_ideas[String(RECIPES[recipe_i]["id"])] = true
-		message = "You found a spirit — a new idea is unlocked!"
+		if String(spirit["recipe"]) == "logs":
+			unlocked_ideas["boat"] = true
+			unlocked_ideas["fire"] = true
+			message = "The spirit of logs — boat and fire ideas unlocked!"
+		else:
+			var recipe_i := recipe_index_for_id(String(spirit["recipe"]))
+			if recipe_i >= 0:
+				unlocked_ideas[String(RECIPES[recipe_i]["id"])] = true
+			message = "You found a spirit — a new idea is unlocked!"
 		message_timer = 2.8
 		spawn_burst(spirit["position"], accent_color, 14)
 		add_shake(0.2)
@@ -1875,6 +2029,10 @@ func recipe_built(index: int) -> bool:
 			return has_life_jacket
 		"fishing_catcher":
 			return has_fishing_catcher
+		"boat":
+			return has_boat or boat_on_ground
+		"fire":
+			return has_fire
 		_:
 			return false
 
@@ -1993,6 +2151,13 @@ func build_selected() -> void:
 		"fishing_catcher":
 			has_fishing_catcher = true
 			message = "Crafted — ready at the river"
+		"boat":
+			boat_on_ground = true
+			boat_position = player_position
+			message = "Boat built — press G to pick it up"
+		"fire":
+			has_fire = true
+			message = "The wood catches — a fire burns bright"
 		_:
 			message = "Crafted!"
 	close_craft_table()
@@ -2001,7 +2166,7 @@ func build_selected() -> void:
 	add_shake(0.32)
 	_sfx("craft_build")
 
-const GEAR_IDS := ["life_jacket", "fishing_catcher", "sword", "shotgun"]
+const GEAR_IDS := ["life_jacket", "fishing_catcher", "sword", "shotgun", "axe", "boat"]
 
 func _gear_worn(id: String) -> bool:
 	match id:
@@ -2013,6 +2178,10 @@ func _gear_worn(id: String) -> bool:
 			return has_sword
 		"shotgun":
 			return has_shotgun
+		"axe":
+			return has_axe
+		"boat":
+			return has_boat
 	return false
 
 func _gear_on_ground(id: String) -> bool:
@@ -2025,6 +2194,10 @@ func _gear_on_ground(id: String) -> bool:
 			return sword_on_ground
 		"shotgun":
 			return shotgun_drops.size() > 0
+		"axe":
+			return axe_on_ground
+		"boat":
+			return boat_on_ground
 	return false
 
 func _gear_position(id: String) -> Vector2:
@@ -2037,6 +2210,10 @@ func _gear_position(id: String) -> Vector2:
 			return sword_position
 		"shotgun":
 			return _nearest_shotgun_drop()
+		"axe":
+			return axe_position
+		"boat":
+			return boat_position
 	return Vector2.ZERO
 
 func _gear_label(id: String) -> String:
@@ -2049,6 +2226,10 @@ func _gear_label(id: String) -> String:
 			return "SWORD"
 		"shotgun":
 			return "SHOTGUN"
+		"axe":
+			return "AXE"
+		"boat":
+			return "BOAT"
 	return id.to_upper()
 
 func _worn_gear_ids() -> Array:
@@ -2077,6 +2258,14 @@ func _drop_gear(id: String) -> void:
 		"shotgun":
 			has_shotgun = false
 			shotgun_drops.append(player_position)
+		"axe":
+			has_axe = false
+			axe_on_ground = true
+			axe_position = player_position
+		"boat":
+			has_boat = false
+			boat_on_ground = true
+			boat_position = player_position
 	_recompute_active_weapon()
 	message = "Dropped " + _gear_label(id)
 	message_timer = 2.8
@@ -2106,6 +2295,13 @@ func _pickup_gear(id: String) -> bool:
 			has_shotgun = true
 			_remove_nearest_shotgun_drop()
 			active_weapon = "shotgun"
+		"axe":
+			has_axe = true
+			axe_on_ground = false
+			active_weapon = "axe"
+		"boat":
+			has_boat = true
+			boat_on_ground = false
 	if state == "crafting":
 		close_craft_table()
 	message = "Equipped"
@@ -2162,7 +2358,7 @@ func confirm_drop_selection() -> void:
 	_drop_gear(id)
 
 func _is_weapon(id: String) -> bool:
-	return id == "sword" or id == "shotgun"
+	return id == "sword" or id == "shotgun" or id == "axe"
 
 func set_main_gear() -> void:
 	if state != "drop_select":
@@ -2732,6 +2928,15 @@ func draw_tree(cell: Vector2i) -> void:
 		position + Vector2(4, -36),
 		position + Vector2(-1, -32),
 	]), accent_color)
+	if state == "playing" and has_axe and active_weapon == "axe" and player_position.distance_to(Vector2(cell) + Vector2(0.5, 0.5)) <= SOURCE_REACH:
+		var cut_label := "PRESS ENTER TO CUT THE TREE"
+		var cut_w := ui_font.get_string_size(cut_label, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x
+		var cut_box_w := maxf(160.0, cut_w + 30.0)
+		var cut_prompt := Rect2(position + Vector2(-cut_box_w * 0.5, -108), Vector2(cut_box_w, 23))
+		draw_rect(Rect2(cut_prompt.position + Vector2(3, 4), cut_prompt.size), Color(0.0, 0.0, 0.0, 0.22), true)
+		draw_rect(cut_prompt, Color(void_color, 0.92), true)
+		draw_line(cut_prompt.position, cut_prompt.position + Vector2(cut_prompt.size.x, 0), accent_color, 1.5)
+		draw_string(ui_font, cut_prompt.position + Vector2(15, 16), cut_label, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, paper_color)
 
 func is_fall_cell(cell: Vector2i) -> bool:
 	if cell.y < 0 or cell.y >= map_rows.size():
@@ -2872,6 +3077,16 @@ func draw_depth_sorted() -> void:
 				"kind": "dropped_shotgun",
 				"position": drop_position,
 			})
+	if axe_on_ground:
+		drawables.append({
+			"depth": iso_to_screen(axe_position).y,
+			"kind": "dropped_axe",
+		})
+	if boat_on_ground:
+		drawables.append({
+			"depth": iso_to_screen(boat_position).y,
+			"kind": "dropped_boat",
+		})
 	drawables.append({
 		"depth": iso_to_screen(player_position).y,
 		"kind": "player",
@@ -2920,6 +3135,10 @@ func draw_depth_sorted() -> void:
 				draw_dropped_sword()
 			"dropped_shotgun":
 				draw_dropped_shotgun(drawable["position"])
+			"dropped_axe":
+				draw_dropped_axe()
+			"dropped_boat":
+				draw_dropped_boat()
 			"player":
 				draw_player()
 			"enemy":
@@ -3117,6 +3336,8 @@ func draw_litter_item(item: Dictionary) -> void:
 			draw_rope_coil(position + Vector2(0, -3 + bob))
 		"wood scrap":
 			draw_wood_scrap(position + Vector2(0, -4 + bob))
+		"log":
+			draw_log(position + Vector2(0, -4 + bob))
 		"coiled spring":
 			draw_spring(position + Vector2(0, -6 + bob))
 	var nearest := nearest_litter_index()
@@ -3158,6 +3379,8 @@ func draw_item_icon(kind: String, center: Vector2) -> void:
 			draw_rope_coil(center)
 		"wood scrap":
 			draw_wood_scrap(center)
+		"log":
+			draw_log(center)
 		_:
 			draw_spring(center)
 
@@ -3188,6 +3411,21 @@ func draw_wood_scrap(center: Vector2) -> void:
 	draw_colored_polygon(points, floor_plum_color.darkened(0.22))
 	draw_polyline(PackedVector2Array([points[0], points[1], points[2], points[3], points[0]]), ink_color, 1.0, true)
 	draw_line(center + Vector2(-5, 0), center + Vector2(5, 0), ink_color, 1.0)
+
+func draw_log(center: Vector2) -> void:
+	var wood := floor_soil_color.darkened(0.1)
+	var body := PackedVector2Array([
+		center + Vector2(-9, -3),
+		center + Vector2(9, -3),
+		center + Vector2(9, 2),
+		center + Vector2(-9, 2),
+	])
+	draw_colored_polygon(body, wood)
+	draw_colored_polygon(PackedVector2Array([center + Vector2(-9, -3), center + Vector2(9, -3), center + Vector2(2, -5), center + Vector2(-2, -5)]), wood.lightened(0.16))
+	draw_arc(center + Vector2(-9, -1), 2.5, -PI * 0.5, PI * 0.5, 10, wood, 1.8, true)
+	draw_arc(center + Vector2(9, -1), 2.5, PI * 0.5, PI * 1.5, 10, wood, 1.8, true)
+	draw_polyline(PackedVector2Array([body[0], body[1], body[2], body[3], body[0]]), ink_color, 1.0, true)
+	draw_line(center + Vector2(-9, -1), center + Vector2(9, -1), Color(ink_color, 0.7), 1.0)
 
 func draw_spring(center: Vector2) -> void:
 	var points := PackedVector2Array()
@@ -3311,7 +3549,7 @@ func draw_shard(shard: Dictionary) -> void:
 		draw_circle(orbit, 1.8, Color(paper_color, 0.8))
 
 func is_drowning() -> bool:
-	return level_kind == "surface" and not has_life_jacket and water_cells.has(cell_at(player_position))
+	return level_kind == "surface" and not has_life_jacket and not has_boat and water_cells.has(cell_at(player_position))
 
 func draw_player() -> void:
 	var base := iso_to_screen(player_position)
@@ -3358,12 +3596,31 @@ func draw_player() -> void:
 				draw_pixel_sprite("sword_" + face, frame_index, box, tint)
 			if has_shotgun and active_weapon == "shotgun":
 				draw_pixel_sprite("shotgun_" + face, frame_index, box, tint)
+			if has_axe and active_weapon == "axe":
+				draw_pixel_sprite("axe_" + face, frame_index, box, tint)
 		draw_pixel_sprite(face, frame_index, box, tint)
 		if face != "nw":
 			if has_sword and active_weapon == "sword":
 				draw_pixel_sprite("sword_" + face, frame_index, box, tint)
 			if has_shotgun and active_weapon == "shotgun":
 				draw_pixel_sprite("shotgun_" + face, frame_index, box, tint)
+			if has_axe and active_weapon == "axe":
+				draw_pixel_sprite("axe_" + face, frame_index, box, tint)
+	if has_boat and not drowning and water_cells.has(cell_at(player_position)):
+		# The boat carries the player: a hull bobbing around the feet in the river.
+		var hull_center := Vector2(spring.x, base.y + 3)
+		var hull_bob := sin(elapsed * 2.6) * 1.5
+		hull_center.y += hull_bob
+		var hull := PackedVector2Array([
+			hull_center + Vector2(-20, -5),
+			hull_center + Vector2(-14, 4),
+			hull_center + Vector2(14, 4),
+			hull_center + Vector2(20, -5),
+			hull_center + Vector2(0, -11),
+		])
+		draw_colored_polygon(hull, gate_color.darkened(0.1))
+		draw_colored_polygon(PackedVector2Array([hull[0], hull[3], hull[4]]), gate_color.lightened(0.12))
+		draw_polyline(PackedVector2Array([hull[0], hull[1], hull[2], hull[3], hull[4], hull[0]]), ink_color, 1.4, true)
 	if has_life_jacket and not drowning:
 		# keep the jacket aligned to the grounded body
 		var dy: float = box.y - (spring.y - 90.0)
@@ -3597,6 +3854,45 @@ func draw_dropped_sword() -> void:
 	draw_line(base + Vector2(0, -2), base + Vector2(12, -6), ink_color, 3.0)
 	if player_position.distance_to(sword_position) <= 0.85:
 		draw_dropped_prompt(position, "SWORD", accent_color)
+
+func draw_dropped_axe() -> void:
+	var position := iso_to_screen(axe_position)
+	draw_shadow(position, 20.0, 0.3)
+	var handle_base := position + Vector2(10.0, 7.0)
+	var handle_tip := position + Vector2(-9.0, -10.0)
+	draw_line(handle_base, handle_tip, ink_color, 3.4)
+	draw_line(handle_base, handle_tip, floor_soil_color.lightened(0.08), 1.8)
+	# Blade head at the far handle end.
+	var blade := PackedVector2Array([
+		handle_tip + Vector2(0, 6),
+		handle_tip + Vector2(7, -1),
+		handle_tip + Vector2(4, -12),
+		handle_tip + Vector2(-6, -9),
+		handle_tip + Vector2(-8, -2),
+	])
+	draw_colored_polygon(blade, slate_light_color)
+	draw_colored_polygon(PackedVector2Array([handle_tip + Vector2(0, 6), handle_tip + Vector2(7, -1), handle_tip + Vector2(2, 1)]), paper_color.lightened(0.12))
+	draw_polyline(PackedVector2Array([blade[0], blade[1], blade[2], blade[3], blade[4], blade[0]]), ink_color, 1.3, true)
+	if player_position.distance_to(axe_position) <= 0.85:
+		draw_dropped_prompt(position, "AXE", accent_color)
+
+func draw_dropped_boat() -> void:
+	var position := iso_to_screen(boat_position)
+	draw_shadow(position, 24.0, 0.3)
+	var hull := PackedVector2Array([
+		position + Vector2(-26, -4),
+		position + Vector2(-19, 8),
+		position + Vector2(19, 8),
+		position + Vector2(26, -4),
+		position + Vector2(0, -11),
+	])
+	draw_colored_polygon(hull, gate_color.darkened(0.14))
+	draw_colored_polygon(PackedVector2Array([position + Vector2(-26, -4), position + Vector2(26, -4), position + Vector2(0, -11)]), gate_color.lightened(0.14))
+	draw_line(position + Vector2(-24, -5), position + Vector2(-21, -13), ink_color, 2.4)
+	draw_line(position + Vector2(24, -5), position + Vector2(21, -13), ink_color, 2.4)
+	draw_polyline(PackedVector2Array([hull[0], hull[1], hull[2], hull[3], hull[4], hull[0]]), ink_color, 1.4, true)
+	if player_position.distance_to(boat_position) <= 0.85:
+		draw_dropped_prompt(position, "BOAT", safe_color)
 
 func draw_dropped_shotgun(drop_position: Vector2) -> void:
 	var position := iso_to_screen(drop_position)
