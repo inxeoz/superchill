@@ -1679,7 +1679,7 @@ func update_player(delta: float) -> void:
 		).normalized().rotated(-camera_angle)
 		var before_move := player_position
 		player_position = move_with_collisions(player_position, world_direction * PLAYER_SPEED * delta, 0.22)
-		if level_kind == "surface" and not has_life_jacket and not has_boat and water_cells.has(cell_at(player_position)):
+		if level_kind == "surface" and not crossing_safe() and water_cells.has(cell_at(player_position)):
 			if drown_timer <= 0.0 or message_timer <= 0.0:
 				message = "You're in deep water — get back or drown!"
 				message_timer = 1.6
@@ -1791,7 +1791,8 @@ func attack() -> void:
 		})
 		_sfx("attack")
 		return
-	if active_weapon == "fire_mashal" and has_fire_mashal:
+	if (active_weapon == "fire_mashal" and has_fire_mashal) or (active_weapon == "life_jacket" and has_life_jacket) or (active_weapon == "boat" and has_boat):
+		# Holding a protective item in hand: a small flourish, no attack.
 		attack_cooldown = ATTACK_COOLDOWN
 		spawn_burst(player_position + player_facing * 0.5, accent_color, 6)
 		_sfx("attack")
@@ -1907,7 +1908,7 @@ func update_drowning(delta: float) -> void:
 	if state != "playing" or level_kind != "surface":
 		drown_timer = 0.0
 		return
-	if not has_life_jacket and not has_boat and water_cells.has(cell_at(player_position)):
+	if not crossing_safe() and water_cells.has(cell_at(player_position)):
 		drown_timer += delta
 		if drown_timer >= DROWN_INTERVAL:
 			drown_timer = 0.0
@@ -1934,9 +1935,12 @@ func night_depth_fraction() -> float:
 	var distance := int(night_depth_flow.get(cell_at(player_position), 0))
 	return clampf(float(distance) / float(maxi(1, night_exit_distance)), 0.0, 1.0)
 
+func mashal_light_on() -> bool:
+	return has_fire_mashal and active_weapon == "fire_mashal"
+
 func night_darkness() -> float:
 	var base := night_depth_fraction()
-	if has_fire_mashal:
+	if mashal_light_on():
 		base *= NIGHT_TORCH_DARKNESS
 	return base
 
@@ -1962,7 +1966,7 @@ func dark_damage() -> void:
 	if state != "playing":
 		return
 	health = maxi(0, health - 1)
-	message = "The jungle is too dark — you're lost, get back to the light!"
+	message = "Too dark! Hold the fire mashal as your main gear."
 	message_timer = 1.8
 	spawn_burst(player_position, void_color.lightened(0.2), 8)
 	add_shake(0.22)
@@ -2489,6 +2493,7 @@ func build_selected() -> void:
 		"life_jacket":
 			has_life_jacket = true
 			life_jacket_on_ground = false
+			active_weapon = "life_jacket"
 			message = "Woven — the river is passable"
 		"fishing_catcher":
 			has_fishing_catcher = true
@@ -2503,12 +2508,14 @@ func build_selected() -> void:
 		"fire_mashal":
 			has_fire_mashal = true
 			item_inventory["fire mashal"] = 1
+			active_weapon = "fire_mashal"
 			message = "The fire mashal blazes — the night pulls back"
 		"camp_fire":
 			has_camp_fire = true
 			message = "A camp fire roars against the dark"
 		"camp_fire_from_torch":
 			has_camp_fire = true
+			_recompute_active_weapon()
 			message = "The mashal becomes a blazing camp fire"
 		_:
 			message = "Crafted!"
@@ -2661,6 +2668,7 @@ func _pickup_gear(id: String) -> bool:
 		"life_jacket":
 			has_life_jacket = true
 			life_jacket_on_ground = false
+			active_weapon = "life_jacket"
 		"fishing_catcher":
 			has_fishing_catcher = true
 			fishing_catcher_on_ground = false
@@ -2679,6 +2687,7 @@ func _pickup_gear(id: String) -> bool:
 		"boat":
 			has_boat = true
 			boat_on_ground = false
+			active_weapon = "boat"
 		"shovel":
 			has_shovel = true
 			shovel_on_ground = false
@@ -2744,7 +2753,7 @@ func confirm_drop_selection() -> void:
 	_drop_gear(id)
 
 func _is_weapon(id: String) -> bool:
-	return id == "sword" or id == "shotgun" or id == "axe" or id == "shovel" or id == "fire_mashal"
+	return id == "sword" or id == "shotgun" or id == "axe" or id == "shovel" or id == "fire_mashal" or id == "life_jacket" or id == "boat"
 
 func set_main_gear() -> void:
 	if state != "drop_select":
@@ -2775,10 +2784,10 @@ func close_drop_select() -> void:
 func update_surface_level() -> void:
 	if state != "playing":
 		return
-	# The night jungle cannot be crossed without light: the mashal is the ticket.
-	if level_theme == "night_jungle" and not has_fire_mashal:
+	# The night jungle cannot be crossed without light: hold the mashal as main gear.
+	if level_theme == "night_jungle" and not mashal_light_on():
 		if dark_timer <= 0.0 or message_timer <= 0.0:
-			message = "Too dark to cross — craft the fire mashal"
+			message = "Too dark to cross — hold the fire mashal as main gear"
 			message_timer = 1.6
 		return
 	var exit_position := Vector2(exit_cell) + Vector2(0.5, 0.5)
@@ -3567,7 +3576,7 @@ func draw_depth_sorted() -> void:
 				draw_dropped_mashal()
 			"player":
 				draw_player()
-				if has_fire_mashal:
+				if mashal_light_on():
 					draw_fire_mashal()
 			"enemy":
 				var enemy_index: int = drawable["index"]
@@ -4058,8 +4067,12 @@ func draw_shard(shard: Dictionary) -> void:
 		var orbit := center + Vector2(cos(angle), sin(angle) * 0.42) * 25.0
 		draw_circle(orbit, 1.8, Color(paper_color, 0.8))
 
+func crossing_safe() -> bool:
+	# Only the primary gear's effect protects: hold the jacket or boat to cross.
+	return (active_weapon == "life_jacket" and has_life_jacket) or (active_weapon == "boat" and has_boat)
+
 func is_drowning() -> bool:
-	return level_kind == "surface" and not has_life_jacket and not has_boat and water_cells.has(cell_at(player_position))
+	return level_kind == "surface" and not crossing_safe() and water_cells.has(cell_at(player_position))
 
 func draw_player() -> void:
 	var base := iso_to_screen(player_position)
@@ -4120,7 +4133,7 @@ func draw_player() -> void:
 				draw_pixel_sprite("axe_" + face, frame_index, box, tint)
 			if has_shovel and active_weapon == "shovel":
 				draw_pixel_sprite("shovel_" + face, frame_index, box, tint)
-	if has_boat and not drowning and water_cells.has(cell_at(player_position)):
+	if active_weapon == "boat" and has_boat and not drowning and water_cells.has(cell_at(player_position)):
 		# The boat carries the player: a hull bobbing around the feet in the river.
 		var hull_center := Vector2(spring.x, base.y + 3)
 		var hull_bob := sin(elapsed * 2.6) * 1.5
@@ -4135,7 +4148,7 @@ func draw_player() -> void:
 		draw_colored_polygon(hull, gate_color.darkened(0.1))
 		draw_colored_polygon(PackedVector2Array([hull[0], hull[3], hull[4]]), gate_color.lightened(0.12))
 		draw_polyline(PackedVector2Array([hull[0], hull[1], hull[2], hull[3], hull[4], hull[0]]), ink_color, 1.4, true)
-	if has_life_jacket and not drowning:
+	if active_weapon == "life_jacket" and has_life_jacket and not drowning:
 		# keep the jacket aligned to the grounded body
 		var dy: float = box.y - (spring.y - 90.0)
 		draw_life_jacket(Vector2(spring.x, spring.y + dy))

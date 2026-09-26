@@ -194,6 +194,36 @@ func run_test() -> void:
 	if game.night_darkness() >= game.NIGHT_LOST_THRESHOLD:
 		quit(1)
 		return
+	# A secondary mashal loses its light: switch the sword to primary and the
+	# darkness returns, sealing the exit again.
+	game.handle_gear_key()
+	var sword_menu_index: int = game.drop_gear_ids.find("sword")
+	if sword_menu_index < 0 or game.state != "drop_select":
+		quit(1)
+		return
+	game.drop_selected = sword_menu_index
+	game.set_main_gear()
+	game.close_drop_select()
+	if game.active_weapon != "sword" or game.night_darkness() < game.NIGHT_LOST_THRESHOLD:
+		quit(1)
+		return
+	game.player_position = Vector2(game.exit_cell) + Vector2(0.5, 0.5)
+	game.update_surface_level()
+	if game.state != "playing" or game.level_index != game.LEVELS.size() - 1:
+		quit(1)
+		return
+	# Set the mashal back as primary: the light returns and the crossing opens.
+	game.handle_gear_key()
+	var mashal_menu_index: int = game.drop_gear_ids.find("fire_mashal")
+	if mashal_menu_index < 0 or game.state != "drop_select":
+		quit(1)
+		return
+	game.drop_selected = mashal_menu_index
+	game.set_main_gear()
+	game.close_drop_select()
+	if game.active_weapon != "fire_mashal" or game.night_darkness() >= game.NIGHT_LOST_THRESHOLD:
+		quit(1)
+		return
 	# With light in hand the deepest crossing completes the level.
 	game.player_position = Vector2(game.exit_cell) + Vector2(0.5, 0.5)
 	game.update_surface_level()
