@@ -64,18 +64,22 @@ func run_test() -> void:
 		quit(1)
 		return
 	game.reset_camera()
+	print("DBG before attack_jump")
 	if not await validate_attack_and_jump():
 		quit(1)
 		return
 	game.reset_camera()
+	print("DBG before restart_confirm")
 	if not validate_restart_confirm():
 		quit(1)
 		return
 	game.reset_camera()
+	print("DBG before wall_faces")
 	if not validate_wall_faces():
 		quit(1)
 		return
 	game.reset_camera()
+	print("DBG before rotated_border")
 	if not validate_rotated_border():
 		quit(1)
 		return
@@ -94,15 +98,19 @@ func run_test() -> void:
 			valid = validate_desert_level()
 		elif level_index == grassland_level_index():
 			valid = validate_distract_level()
-		elif level_index == game.LEVELS.size() - 2:
+		elif level_index == theme_level_index("jungle"):
 			valid = validate_jungle_level()
-		elif level_index == game.LEVELS.size() - 1:
+		elif level_index == theme_level_index("night_jungle"):
 			valid = validate_night_jungle_level()
+		elif level_index == theme_level_index("sandbox"):
+			valid = validate_sandbox_level()
 		else:
 			valid = validate_dungeon_level(level_index)
 		if not valid:
+			print("DBG level failed index=", level_index, " theme=", game.LEVELS[level_index].get("theme", ""), " name=", game.LEVELS[level_index]["name"])
 			quit(1)
 			return
+	print("DBG after loop")
 	game.load_level(1)
 	var enemy_count: int = game.enemies.size()
 	game.enemies[0]["position"] = game.player_position + game.player_facing * 0.8
@@ -121,6 +129,7 @@ func run_test() -> void:
 	if game.level_index != 2 or game.level_name != "MOSSGLASS CISTERN":
 		quit(1)
 		return
+	print("DBG before load4")
 	game.load_level(4)
 	for shard in game.shards:
 		shard["taken"] = true
@@ -131,17 +140,20 @@ func run_test() -> void:
 		quit(1)
 		return
 	# The radio level is crossed by helicopter; the old jungle chain continues from itself.
-	game.load_level(game.LEVELS.size() - 2)
+	print("DBG before jungle")
+	game.load_level(theme_level_index("jungle"))
 	# Cross the old jungle into the night jungle.
 	game.player_position = Vector2(game.exit_cell) + Vector2(0.5, 0.5)
 	game.update_surface_level()
-	if game.level_index != game.LEVELS.size() - 1 or game.state != "playing" or game.level_theme != "night_jungle":
+	print("DBG crossed to ", game.level_index, " ", game.level_theme)
+	if game.level_index != theme_level_index("night_jungle") or game.state != "playing" or game.level_theme != "night_jungle":
 		quit(1)
 		return
 	# Without the fire mashal the night exit stays sealed.
 	game.player_position = Vector2(game.exit_cell) + Vector2(0.5, 0.5)
 	game.update_surface_level()
-	if game.state != "playing" or game.level_index != game.LEVELS.size() - 1:
+	print("DBG after sealed ", game.state, " ", game.level_index, " ", game.level_theme)
+	if game.state != "playing" or game.level_index != theme_level_index("night_jungle"):
 		quit(1)
 		return
 	# The material spirits must be collected before the night recipes open.
@@ -150,6 +162,7 @@ func run_test() -> void:
 		if not game.try_collect_spirit():
 			quit(1)
 			return
+	print("DBG after spirits")
 	if not game.unlocked_ideas.has("flint_stone") or not game.unlocked_ideas.has("wood") or not game.unlocked_ideas.has("leaves"):
 		quit(1)
 		return
@@ -158,6 +171,7 @@ func run_test() -> void:
 	if game.night_darkness() < game.NIGHT_LOST_THRESHOLD:
 		quit(1)
 		return
+	print("DBG before darkness")
 	var health_before_dark: int = game.health
 	game.update_night_darkness(game.NIGHT_DARKNESS_INTERVAL)
 	if game.health != health_before_dark - 1:
@@ -225,7 +239,8 @@ func run_test() -> void:
 		return
 	game.player_position = Vector2(game.exit_cell) + Vector2(0.5, 0.5)
 	game.update_surface_level()
-	if game.state != "playing" or game.level_index != game.LEVELS.size() - 1:
+	print("DBG after sealed ", game.state, " ", game.level_index, " ", game.level_theme)
+	if game.state != "playing" or game.level_index != theme_level_index("night_jungle"):
 		quit(1)
 		return
 	# Set the mashal back as primary: the light returns and the crossing opens.
@@ -246,30 +261,39 @@ func run_test() -> void:
 	if game.state != "won":
 		quit(1)
 		return
+	print("DBG before hard_reset")
 	if not validate_hard_reset():
 		quit(1)
 		return
+	print("DBG before drop_select")
 	if not validate_drop_select():
 		quit(1)
 		return
+	print("DBG before throw_item")
 	if not validate_throw_item():
 		quit(1)
 		return
+	print("DBG before shotgun")
 	if not validate_shotgun():
 		quit(1)
 		return
+	print("DBG before gear_switch")
 	if not validate_gear_switch():
 		quit(1)
 		return
+	print("DBG before jungle_craft")
 	if not validate_jungle_craft():
 		quit(1)
 		return
+	print("DBG before jungle_shovel")
 	if not validate_jungle_shovel():
 		quit(1)
 		return
+	print("DBG before fishing_catcher")
 	if not validate_fishing_catcher():
 		quit(1)
 		return
+	print("DBG before occlusion")
 	if not validate_occlusion_reveal():
 		quit(1)
 		return
@@ -293,6 +317,40 @@ func grassland_level_index() -> int:
 		if String(game.LEVELS[index].get("theme", "")) == "grassland":
 			return index
 	return -1
+
+func theme_level_index(theme: String) -> int:
+	for index in range(game.LEVELS.size()):
+		if String(game.LEVELS[index].get("theme", "")) == theme:
+			return index
+	return -1
+
+func validate_sandbox_level() -> bool:
+	var level := theme_level_index("sandbox")
+	if level < 0:
+		return false
+	game.load_level(level)
+	if game.state != "playing" or game.level_theme != "sandbox":
+		return false
+	# Every recipe is unlocked and craftable here.
+	for index in range(game.RECIPES.size()):
+		if not game.is_idea_unlocked(index):
+			return false
+	# Every raw material kind is available as litter to pick, so each recipe can
+	# be built by gathering. The fire mashal only exists as crafted gear here.
+	var crafted_only := ["fire mashal"]
+	for kind in game.ITEM_ORDER:
+		if crafted_only.has(String(kind)):
+			continue
+		if not game.litter.any(func(item): return String(item["kind"]) == String(kind)):
+			return false
+	# The noise-maker device is staged on the ground with its own sprite.
+	if not game.litter.any(func(item): return String(item["kind"]) == "noise maker"):
+		return false
+	# The craftable gear is staged on the ground for pickup.
+	for id in ["life_jacket", "fishing_catcher", "boat", "fire_mashal", "radio_receiver", "axe", "shovel"]:
+		if not game._gear_on_ground(id):
+			return false
+	return true
 
 func validate_distract_level() -> bool:
 	var level := grassland_level_index()
@@ -337,7 +395,8 @@ func validate_distract_level() -> bool:
 	game.craft_selected = 0
 	game.recipe_index = recipe_i
 	game.build_selected()
-	if not game.has_noise_maker or game.state != "playing":
+	# The noise maker is a reusable inventory item now, not single-use gear.
+	if int(game.item_inventory.get("noise maker", 0)) != 1 or game.state != "playing":
 		return false
 	if int(game.item_inventory.get("pebble", 0)) != 0 or int(game.item_inventory.get("rope", 0)) != 0 or game.bottle_count != 0:
 		return false
@@ -388,7 +447,7 @@ func validate_distract_level() -> bool:
 	# stop chasing the player and head for the sound instead.
 	game.player_position = Vector2(6.5, 8.5)
 	game.player_facing = Vector2(1.0, 0.0)
-	game.has_noise_maker = true
+	game.item_inventory["noise maker"] = 1
 	game.begin_noise_throw()
 	if not game.throwing_noise:
 		return false
@@ -396,9 +455,23 @@ func validate_distract_level() -> bool:
 	if game.noise_throw_distance() <= game.THROW_MIN_RANGE:
 		return false
 	game.release_noise_throw()
-	if game.has_noise_maker or game.noise_timer <= 0.0 or game.noise_flow.is_empty():
+	# The noise maker is a reusable item: throwing it rings the lure but never
+	# consumes it, so it stays in hand for another throw.
+	if not game.has_noise_maker_item() or game.noise_timer <= 0.0 or game.noise_flow.is_empty():
 		return false
 	var noise_before: Vector2 = game.noise_position
+	# Throwing again relocates the rattle to the new landing spot.
+	game.player_facing = Vector2(0.0, 1.0)
+	game.begin_noise_throw()
+	game.update_noise(game.THROW_CHARGE_TIME)
+	game.release_noise_throw()
+	if not game.has_noise_maker_item() or game.noise_position.is_equal_approx(noise_before):
+		return false
+	game.player_facing = Vector2(1.0, 0.0)
+	game.player_position = Vector2(6.5, 8.5)
+	game.noise_position = noise_before
+	game.noise_timer = game.NOISE_LURE_TIME
+	game.noise_flow = game.build_flow_from(game.cell_at(noise_before))
 	game.enemies.clear()
 	# Put the player off the beast -> noise lane, then spawn the beasts on the
 	# noise's row so the lure carries them straight to the sound.
@@ -830,7 +903,7 @@ func validate_shotgun() -> bool:
 		if not game.walkable.has(game.cell_at(game.shotgun_drops[0])):
 			return false
 	# The jungle and night-jungle levels each drop two guns on walkable cells.
-	for gun_level_index in [game.LEVELS.size() - 2, game.LEVELS.size() - 1]:
+	for gun_level_index in [theme_level_index("jungle"), theme_level_index("night_jungle")]:
 		game.load_level(gun_level_index)
 		if game.has_shotgun or game.shotgun_drops.size() != 2:
 			return false
@@ -838,7 +911,7 @@ func validate_shotgun() -> bool:
 			if not game.walkable.has(game.cell_at(drop)):
 				return false
 	# Picking one night-jungle gun leaves the other on the ground.
-	game.load_level(game.LEVELS.size() - 1)
+	game.load_level(theme_level_index("night_jungle"))
 	game.player_position = game.shotgun_drops[0]
 	if not game._pickup_gear("shotgun"):
 		return false
@@ -1507,7 +1580,7 @@ func validate_surface_level() -> bool:
 
 
 func validate_jungle_craft() -> bool:
-	var jungle_index: int = game.LEVELS.size() - 2
+	var jungle_index: int = theme_level_index("jungle")
 	game.load_level(jungle_index)
 	# The axe rests on reachable land near the start of the jungle level.
 	if not game.axe_on_ground or game.has_axe:
@@ -1642,7 +1715,7 @@ func validate_jungle_craft() -> bool:
 	return game.has_fire and game.state == "playing" and int(game.item_inventory.get("wood scrap", 0)) == 0
 
 func validate_jungle_shovel() -> bool:
-	var jungle_index: int = game.LEVELS.size() - 2
+	var jungle_index: int = theme_level_index("jungle")
 	game.load_level(jungle_index)
 	# The shovel rests on reachable land near the start, beside the axe.
 	if not game.shovel_on_ground or game.has_shovel:
@@ -1723,7 +1796,7 @@ func validate_jungle_shovel() -> bool:
 	return not game.has_shovel and game.shovel_on_ground
 
 func validate_night_jungle_level() -> bool:
-	var night_index: int = game.LEVELS.size() - 1
+	var night_index: int = theme_level_index("night_jungle")
 	game.load_level(night_index)
 	if game.level_index != night_index or game.level_kind != "surface" or game.level_theme != "night_jungle" or game.map_rows.size() != 19:
 		return false
@@ -1888,8 +1961,8 @@ func validate_radio_level() -> bool:
 	return game.state == "playing" and game.level_index == radio_index + 1
 
 func validate_jungle_level() -> bool:
-	game.load_level(game.LEVELS.size() - 2)
-	if game.level_index != game.LEVELS.size() - 2 or game.level_kind != "surface" or game.level_theme != "jungle" or game.map_rows.size() != 14:
+	game.load_level(theme_level_index("jungle"))
+	if game.level_index != theme_level_index("jungle") or game.level_kind != "surface" or game.level_theme != "jungle" or game.map_rows.size() != 14:
 		return false
 	if game.walkable.is_empty() or game.flow.size() != game.walkable.size():
 		return false

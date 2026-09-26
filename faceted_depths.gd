@@ -549,6 +549,61 @@ const LEVELS := [
 		"paper": "f2ead2",
 		"muted": "93a897",
 	},
+	{
+		"name": "TEST SANDBOX",
+		"kind": "surface",
+		"theme": "sandbox",
+		"map": [
+			"########################################",
+			"#......................................#",
+			"#......................................#",
+			"#......................................#",
+			"#......................................#",
+			"#......................................#",
+			"#......................................#",
+			"#......................................#",
+			"#......................................#",
+			"#......................................#",
+			"#......................................#",
+			"#......................................#",
+			"#......................................#",
+			"#......................................#",
+			"#......................................#",
+			"#......................................#",
+			"#......................................#",
+			"#......................................#",
+			"#......................................#",
+			"#......................................#",
+			"#......................................#",
+			"#......................................#",
+			"#......................................#",
+			"#......................................#",
+			"########################################",
+		],
+		"shards": [],
+		"spawns": [],
+		"start": Vector2i(2, 12),
+		"exit": Vector2i(37, 2),
+		"void": "101418",
+		"deep": "1c2630",
+		"ink": "222e3a",
+		"ink_soft": "2c3a48",
+		"wall_alt": "33414f",
+		"slate": "3a4856",
+		"slate_light": "485868",
+		"floor_mist": "556678",
+		"floor_petrol": "62758a",
+		"floor_plum": "70829a",
+		"soil": "6b5230",
+		"accent": "ffd166",
+		"safe": "6de5a0",
+		"danger": "d0554f",
+		"enemy": "d0554f",
+		"enemy_accent": "f0c060",
+		"gate": "4f6b3a",
+		"paper": "f4f1d8",
+		"muted": "b8c99a",
+	},
 ]
 
 const PLAYER_PIXELS_CHARS := "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -1244,7 +1299,6 @@ var boat_position := Vector2.ZERO
 var has_fire := false
 var has_fire_mashal := false
 var has_desert_goggles := false
-var has_noise_maker := false
 var throwing_noise := false
 var throw_charge := 0.0
 var noise_position := Vector2.ZERO
@@ -1605,7 +1659,6 @@ func load_level(index: int) -> void:
 	has_fire = false
 	has_fire_mashal = false
 	has_desert_goggles = false
-	has_noise_maker = false
 	throwing_noise = false
 	throw_charge = 0.0
 	noise_timer = 0.0
@@ -1675,6 +1728,8 @@ func load_level(index: int) -> void:
 			message = "The storm blinds you"
 		elif level_theme == "grassland":
 			message = "Two beasts guard the way out — stay clear"
+		elif level_theme == "sandbox":
+			message = "Sandbox — every item and recipe is available"
 		else:
 			message = "Pick up gear with F • press B to craft"
 	elif level_index == 1:
@@ -1751,6 +1806,8 @@ func load_level(index: int) -> void:
 		})
 	if level_kind == "surface":
 		distribute_surface_items()
+	if level_theme == "sandbox":
+		setup_sandbox_level()
 	rebuild_flow()
 	for spawn_index in range(enemy_spawns.size()):
 		var cell: Vector2i = enemy_spawns[spawn_index]
@@ -1823,6 +1880,12 @@ func distribute_surface_items() -> void:
 			bag.append("pebble")
 		for i in range(3):
 			bag.append("rope")
+	elif level_theme == "sandbox":
+		# A test bench: every craft material, plus the raw kinds that feed the
+		# spirits (logs unlock the boat/fire chain).
+		for kind in ["empty bottle", "rope", "pebble", "wood scrap", "plastic wrapper", "coiled spring", "leaves", "flint stone", "wood", "log", "cloth", "metal scrap", "wine glass", "aluminum foil"]:
+			for i in range(6):
+				bag.append(kind)
 	else:
 		for i in range(20):
 			bag.append("empty bottle")
@@ -1865,6 +1928,56 @@ func distribute_surface_items() -> void:
 			"position": Vector2(cell) + Vector2(0.5, 0.5),
 			"phase": index * 1.3,
 		})
+
+func setup_sandbox_level() -> void:
+	# A test bench: unlock every recipe idea and scatter one of every craftable
+	# and found gear near the start, so each system can be exercised in isolation.
+	for recipe in RECIPES:
+		unlocked_ideas[String(recipe["id"])] = true
+	for idea in MATERIAL_IDEAS.values():
+		unlocked_ideas[String(idea)] = true
+	unlocked_ideas["boat"] = true
+	unlocked_ideas["fire"] = true
+	# Seed a built noise maker and some bottles so the throw systems can be
+	# exercised without gathering first.
+	item_inventory["noise maker"] = 1
+	bottle_count = 20
+	var spot := find_gun_drop_cells(10)
+	var index := 0
+	for id in ["life_jacket", "fishing_catcher", "sword", "axe", "boat", "shovel", "fire_mashal", "radio_receiver"]:
+		if index >= spot.size():
+			break
+		var landing: Vector2 = spot[index]
+		match id:
+			"life_jacket":
+				life_jacket_on_ground = true
+				life_jacket_position = landing
+			"fishing_catcher":
+				fishing_catcher_on_ground = true
+				fishing_catcher_position = landing
+			"sword":
+				sword_on_ground = true
+				sword_position = landing
+			"axe":
+				axe_on_ground = true
+				axe_position = landing
+			"boat":
+				boat_on_ground = true
+				boat_position = landing
+			"shovel":
+				shovel_on_ground = true
+				shovel_position = landing
+			"fire_mashal":
+				fire_mashal_on_ground = true
+				fire_mashal_position = landing
+			"radio_receiver":
+				receiver_on_ground = true
+				receiver_position = landing
+		index += 1
+	# A noise-maker device on the ground near the start, so its sprite and the
+	# throw system can be tested without crafting one first.
+	if spot.size() > 8:
+		litter.append({"kind": "noise maker", "position": spot[8], "phase": 0.0})
 
 func apply_level_colors(level: Dictionary) -> void:
 	void_color = Color(String(level["void"]))
@@ -2570,8 +2683,11 @@ func noise_throw_target() -> Vector2:
 		travelled += step.length()
 	return cursor
 
+func has_noise_maker_item() -> bool:
+	return int(item_inventory.get("noise maker", 0)) > 0
+
 func begin_noise_throw() -> void:
-	if state != "playing" or not has_noise_maker or throwing_noise:
+	if state != "playing" or not has_noise_maker_item() or throwing_noise:
 		return
 	throwing_noise = true
 	throw_charge = 0.0
@@ -2582,11 +2698,10 @@ func release_noise_throw() -> void:
 	if not throwing_noise:
 		return
 	throwing_noise = false
-	if not has_noise_maker:
+	if not has_noise_maker_item():
 		throw_charge = 0.0
 		return
 	var target := noise_throw_target()
-	has_noise_maker = false
 	throw_charge = 0.0
 	noise_position = target
 	noise_timer = NOISE_LURE_TIME
@@ -2594,7 +2709,7 @@ func release_noise_throw() -> void:
 	spawn_burst(target, accent_color, 14)
 	add_shake(0.28)
 	_sfx("spirit")
-	message = "The rattle sounds — the beasts turn toward the noise"
+	message = "The rattle sounds — the beasts turn toward the noise (T to throw again)"
 	message_timer = 2.6
 
 # Sandstorm visibility: a small clear pool around the player that the desert
@@ -2670,12 +2785,13 @@ func collect_shards() -> void:
 			message_timer = 99.0
 			_sfx("win")
 
-const ITEM_ORDER := ["leaves", "plastic wrapper", "rope", "pebble", "wood scrap", "coiled spring", "log", "flint stone", "wood", "fire mashal", "cloth", "metal scrap", "wine glass"]
+const ITEM_ORDER := ["leaves", "plastic wrapper", "rope", "pebble", "noise maker", "wood scrap", "coiled spring", "log", "flint stone", "wood", "fire mashal", "cloth", "metal scrap", "wine glass"]
 const ITEM_LABELS := {
 	"leaves": "LEAVES",
 	"plastic wrapper": "PLASTIC WRAPPERS",
 	"rope": "ROPE",
 	"pebble": "PEBBLES",
+	"noise maker": "NOISE MAKERS",
 	"wood scrap": "WOOD SCRAPS",
 	"coiled spring": "COILED SPRINGS",
 	"empty bottle": "EMPTY BOTTLES",
@@ -2692,6 +2808,7 @@ const ITEM_SINGULAR_LABELS := {
 	"plastic wrapper": "PLASTIC WRAPPER",
 	"rope": "ROPE",
 	"pebble": "PEBBLE",
+	"noise maker": "NOISE MAKER",
 	"wood scrap": "WOOD SCRAP",
 	"coiled spring": "COILED SPRING",
 	"empty bottle": "EMPTY BOTTLE",
@@ -3085,7 +3202,7 @@ func recipe_built(index: int) -> bool:
 		"desert_goggles":
 			return has_desert_goggles
 		"noise_maker":
-			return has_noise_maker
+			return int(item_inventory.get("noise maker", 0)) > 0
 		_:
 			return false
 
@@ -3283,8 +3400,10 @@ func build_selected() -> void:
 			has_desert_goggles = true
 			message = "Desert goggles shield your eyes — the storm parts"
 		"noise_maker":
-			has_noise_maker = true
-			message = "Noise maker ready — press T to throw it"
+			# A reusable item, not single-use gear: it lives in the inventory so
+			# the normal N throw can pick it up, and throwing never consumes it.
+			item_inventory["noise maker"] = int(item_inventory.get("noise maker", 0)) + 1
+			message = "Noise maker built — throw it with N"
 		_:
 			message = "Crafted!"
 	close_craft_table()
@@ -3773,6 +3892,11 @@ func helicopter_progress() -> float:
 		return 0.0
 	return clampf((elapsed - helicopter_start) / HELICOPTER_FLY_TIME, 0.0, 1.0)
 
+func campaign_is_final() -> bool:
+	# The night jungle is the run's last crossing; the sandbox is a standalone
+	# test bench, not the next chapter. Neither one advances the chain.
+	return level_theme == "night_jungle" or level_theme == "sandbox" or level_index >= LEVELS.size() - 1
+
 func try_helicopter_escape() -> bool:
 	if state != "playing" or level_theme != "radio_jungle" or not signal_sent:
 		return false
@@ -3786,7 +3910,7 @@ func try_helicopter_escape() -> bool:
 		message_timer = 2.2
 		_sfx("craft_fail")
 		return false
-	if level_index < LEVELS.size() - 1:
+	if not campaign_is_final():
 		_sfx("level_load")
 		load_level(level_index + 1)
 	else:
@@ -3816,7 +3940,7 @@ func update_surface_level() -> void:
 		return
 	var exit_position := Vector2(exit_cell) + Vector2(0.5, 0.5)
 	if player_position.distance_to(exit_position) < 0.56:
-		if level_index < LEVELS.size() - 1:
+		if not campaign_is_final():
 			load_level(level_index + 1)
 		else:
 			state = "won"
@@ -4041,7 +4165,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			elif keycode == KEY_R:
 				if state == "playing":
 					open_restart_confirm()
-				elif state == "won" and level_index == LEVELS.size() - 1:
+				elif state == "won" and campaign_is_final():
 					reset_game()
 				else:
 					load_level(level_index)
@@ -5016,6 +5140,8 @@ func draw_litter_item(item: Dictionary) -> void:
 			draw_metal_scrap(position + Vector2(0, -4 + bob))
 		"wine glass":
 			draw_wine_glass(position + Vector2(0, -5 + bob))
+		"noise maker":
+			draw_noise_maker_device(position + Vector2(0, -4 + bob))
 	var nearest := nearest_litter_index()
 	if nearest >= 0 and litter[nearest]["position"].is_equal_approx(item["position"]):
 		var prompt := Rect2(position + Vector2(-75, -100), Vector2(150, 44))
@@ -5075,8 +5201,29 @@ func draw_item_icon(kind: String, center: Vector2) -> void:
 			draw_wine_glass(center)
 		"fish":
 			draw_fish(center)
+		"noise maker":
+			draw_noise_maker_device(center)
 		_:
 			draw_spring(center)
+
+func draw_noise_maker_device(center: Vector2) -> void:
+	# A rattle device: round shaker head on a short handle, beads and a cord.
+	var head := PackedVector2Array([
+		center + Vector2(-7, -13),
+		center + Vector2(3, -15),
+		center + Vector2(9, -8),
+		center + Vector2(7, 1),
+		center + Vector2(-3, 3),
+		center + Vector2(-9, -4),
+	])
+	draw_colored_polygon(head, accent_color.darkened(0.18))
+	draw_polyline(PackedVector2Array([head[0], head[1], head[2], head[3], head[4], head[5], head[0]]), ink_color, 1.2, true)
+	draw_circle(center + Vector2(-3, -7), 1.6, paper_color)
+	draw_circle(center + Vector2(3, -10), 1.6, paper_color)
+	draw_circle(center + Vector2(2, -3), 1.6, paper_color)
+	draw_line(center + Vector2(-8, 1), center + Vector2(-13, 10), Color("6b4a2a"), 2.6)
+	draw_line(center + Vector2(-6, 2), center + Vector2(-11, 11), Color("8a6234"), 1.6)
+	draw_arc(center + Vector2(-14, 12), 3.0, PI * 0.2, PI * 1.6, 10, Color(muted_color, 0.9), 1.2, true)
 
 func draw_plastic_wrapper(center: Vector2) -> void:
 	var points := PackedVector2Array([
@@ -5381,7 +5528,7 @@ func draw_noise_maker(_viewport: Vector2) -> void:
 	if level_theme != GRASSLAND_THEME:
 		return
 	var player_screen := noise_world_to_screen(player_position)
-	if throwing_noise and has_noise_maker:
+	if throwing_noise and has_noise_maker_item():
 		var target := noise_throw_target()
 		var target_screen := noise_world_to_screen(target)
 		var reach := noise_throw_distance()
@@ -6596,8 +6743,9 @@ func draw_level_select(viewport: Vector2) -> void:
 		var radio_level := surface_level and String(level.get("theme", "")) == "radio_jungle"
 		var night_level := surface_level and String(level.get("theme", "")) == "night_jungle"
 		var desert_level := surface_level and String(level.get("theme", "")) == "desert_storm"
-		var surface_detail := "NIGHT JUNGLE STATION" if radio_level else ("JUNGLE" if jungle_level else ("NIGHT JUNGLE" if night_level else ("DESERT STORM" if desert_level else "RIVER CROSSING")))
-		var surface_summary := "RADIO  •  FOIL  •  CALL FOR HELP" if radio_level else ("WATERFALL  •  EXPLORE" if jungle_level else ("FIRE MASHAL  •  CROSS" if night_level else ("GOGGLES  •  HYENAS  •  EXIT" if desert_level else "BOTTLES  •  CRAFT  •  RIVER")))
+		var sandbox_level := surface_level and String(level.get("theme", "")) == "sandbox"
+		var surface_detail := "TEST SANDBOX" if sandbox_level else ("NIGHT JUNGLE STATION" if radio_level else ("JUNGLE" if jungle_level else ("NIGHT JUNGLE" if night_level else ("DESERT STORM" if desert_level else "RIVER CROSSING"))))
+		var surface_summary := "ALL ITEMS  •  ALL RECIPES  •  FREE PLAY" if sandbox_level else ("RADIO  •  FOIL  •  CALL FOR HELP" if radio_level else ("WATERFALL  •  EXPLORE" if jungle_level else ("FIRE MASHAL  •  CROSS" if night_level else ("GOGGLES  •  HYENAS  •  EXIT" if desert_level else "BOTTLES  •  CRAFT  •  RIVER"))))
 		var detail := surface_detail if surface_level else enemy_display_name(String(level["enemy_kind"]))
 		var summary := surface_summary if surface_level else "3 SHARDS  •  5 ENEMIES"
 		draw_string(ui_font, row.position + Vector2(112, 52), detail, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, row_color if selected else muted_color)
@@ -6938,7 +7086,7 @@ func draw_storm_plaque(rect: Rect2) -> void:
 func draw_noise_plaque(rect: Rect2) -> void:
 	draw_plaque(rect, accent_color)
 	draw_string(ui_font, rect.position + Vector2(18, 25), "DISTRACTION", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, muted_color)
-	draw_string(ui_font, rect.position + Vector2(18, 52), "NOISE MAKER" if has_noise_maker else "NO NOISE MAKER", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, accent_color if has_noise_maker else muted_color)
+	draw_string(ui_font, rect.position + Vector2(18, 52), "NOISE MAKER" if has_noise_maker_item() else "NO NOISE MAKER", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, accent_color if has_noise_maker_item() else muted_color)
 	draw_line(rect.position + Vector2(18, 66), rect.position + Vector2(rect.size.x - 18, 66), Color(muted_color, 0.4), 1.0)
 	var footer := "BEASTS ROAM THE MEADOW"
 	var footer_color := muted_color
