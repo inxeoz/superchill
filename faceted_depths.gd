@@ -26,6 +26,9 @@ const ITEM_PHRASES := {
 	"coiled spring": "a coiled spring",
 	"empty bottle": "an empty bottle",
 	"log": "a log of wood",
+	"flint stone": "a flint stone",
+	"wood": "a piece of wood",
+	"fire mashal": "a fire mashal",
 }
 const ITEM_PLURALS := {
 	"leaves": "leaves",
@@ -35,6 +38,9 @@ const ITEM_PLURALS := {
 	"coiled spring": "coiled springs",
 	"empty bottle": "empty bottles",
 	"log": "logs of wood",
+	"flint stone": "flint stones",
+	"wood": "pieces of wood",
+	"fire mashal": "fire mashals",
 }
 const DEFAULT_CAMERA_ZOOM := 1.08
 const CAMERA_ZOOM_MIN := 0.55
@@ -308,6 +314,61 @@ const LEVELS := [
 		"gate": "5f7a3a",
 		"paper": "f4f1d8",
 		"muted": "b8c99a",
+	},
+	{
+		"name": "DARK NIGHT JUNGLE",
+		"kind": "surface",
+		"theme": "night_jungle",
+		"map": [
+			"############################",
+			"#........M..............M..#",
+			"#..M........M....M.......M.#",
+			"#......M....M...........M..#",
+			"#....MM.......M....M.......#",
+			"#.............M........M...#",
+			"#..M..M....M........M...M..#",
+			"#..M.......M........M...M..#",
+			"#..........M.........M..M..#",
+			"#......M....M.........M..M.#",
+			"#..MM.......M...MM......M..#",
+			"#............M.........M...#",
+			"#..M......M...MM......M....#",
+			"#..M......M........M...M...#",
+			"#.....M....M......M....M...#",
+			"#....M.......M.........M...#",
+			"#....M......M......M.......#",
+			"#..........................#",
+			"############################",
+		],
+		"shards": [],
+		"spawns": [],
+		"trees": [Vector2i(2, 1), Vector2i(2, 7), Vector2i(5, 3), Vector2i(8, 15), Vector2i(10, 4), Vector2i(12, 13), Vector2i(13, 2), Vector2i(14, 11), Vector2i(17, 5), Vector2i(17, 11), Vector2i(19, 1), Vector2i(20, 1), Vector2i(20, 2), Vector2i(20, 4), Vector2i(20, 14), Vector2i(21, 1), Vector2i(21, 2), Vector2i(21, 4), Vector2i(21, 5), Vector2i(21, 6), Vector2i(21, 7), Vector2i(21, 9), Vector2i(22, 1), Vector2i(22, 2), Vector2i(22, 4), Vector2i(22, 5), Vector2i(22, 6), Vector2i(22, 7), Vector2i(22, 8), Vector2i(22, 11), Vector2i(23, 1), Vector2i(23, 4), Vector2i(23, 6), Vector2i(23, 7), Vector2i(24, 4), Vector2i(24, 5), Vector2i(25, 1), Vector2i(25, 3), Vector2i(25, 4), Vector2i(25, 5), Vector2i(25, 6), Vector2i(25, 7), Vector2i(25, 8), Vector2i(26, 1), Vector2i(26, 2), Vector2i(26, 3), Vector2i(26, 4), Vector2i(26, 5), Vector2i(26, 6), Vector2i(26, 7), Vector2i(26, 8), Vector2i(26, 9), Vector2i(26, 12), Vector2i(26, 17)],
+		"spirits": [
+			{"cell": Vector2i(4, 5), "recipe": "flint_stone"},
+			{"cell": Vector2i(12, 7), "recipe": "wood"},
+			{"cell": Vector2i(17, 1), "recipe": "leaves"},
+		],
+		"start": Vector2i(1, 16),
+		"exit": Vector2i(24, 2),
+		"void": "040a0b",
+		"deep": "071310",
+		"ink": "0b1c17",
+		"ink_soft": "10291f",
+		"wall_alt": "143324",
+		"slate": "1a3a28",
+		"slate_light": "27513a",
+		"floor_mist": "1d4230",
+		"floor_petrol": "2d5a3d",
+		"floor_plum": "3a5f36",
+		"soil": "4a3a24",
+		"accent": "f5a83b",
+		"safe": "7fe3d0",
+		"danger": "e0564b",
+		"enemy": "e0564b",
+		"enemy_accent": "f5a83b",
+		"gate": "3f5a4a",
+		"paper": "f2ead2",
+		"muted": "93a897",
 	},
 ]
 
@@ -1002,6 +1063,10 @@ var has_boat := false
 var boat_on_ground := false
 var boat_position := Vector2.ZERO
 var has_fire := false
+var has_fire_mashal := false
+var fire_mashal_on_ground := false
+var fire_mashal_position := Vector2.ZERO
+var has_camp_fire := false
 var has_shovel := false
 var shovel_on_ground := false
 var shovel_position := Vector2.ZERO
@@ -1026,6 +1091,12 @@ var player_jump_time := 0.0
 const JUMP_DURATION := 0.5
 const JUMP_HEIGHT := 18.0
 const DROWN_INTERVAL := 0.2
+const NIGHT_DARKNESS_INTERVAL := 1.2
+const NIGHT_LOST_THRESHOLD := 0.8
+const NIGHT_TORCH_DARKNESS := 0.45
+const NIGHT_TORCH_RADIUS := 3.4
+const NIGHT_VISIBILITY_MAX := 3.6
+const NIGHT_VISIBILITY_MIN := 1.1
 const SFX_FILES := {
 	"attack": "rpg/rpg_012.wav",
 	"enemy_hit": "hit/hit_001.wav",
@@ -1056,6 +1127,9 @@ const LEVEL_ROW_H := 68.0
 const LEVEL_ROW_GAP := 14.0
 const LEVEL_VISIBLE := 5
 var drown_timer := 0.0
+var dark_timer := 0.0
+var night_depth_flow: Dictionary = {}
+var night_exit_distance := 1
 var invulnerability := 0.0
 var shake_strength := 0.0
 var screen_shake := Vector2.ZERO
@@ -1282,6 +1356,10 @@ func load_level(index: int) -> void:
 	boat_on_ground = false
 	boat_position = Vector2.ZERO
 	has_fire = false
+	has_fire_mashal = false
+	fire_mashal_on_ground = false
+	fire_mashal_position = Vector2.ZERO
+	has_camp_fire = false
 	has_shovel = false
 	shovel_on_ground = false
 	shovel_position = Vector2.ZERO
@@ -1295,13 +1373,33 @@ func load_level(index: int) -> void:
 	if shovel_cell.x >= 0:
 		shovel_on_ground = true
 		shovel_position = Vector2(shovel_cell) + Vector2(0.5, 0.5)
-	if level_theme == "jungle":
+	if level_theme == "jungle" or level_theme == "night_jungle":
 		shotgun_drops = find_gun_drop_cells(2)
 	elif level_kind != "surface":
 		shotgun_drops = find_gun_drop_cells(1)
+	if level_theme == "night_jungle":
+		# Depth into the jungle: BFS distance from the entrance, per walkable cell.
+		night_depth_flow.clear()
+		night_depth_flow[start_cell] = 0
+		var depth_queue: Array[Vector2i] = [start_cell]
+		while not depth_queue.is_empty():
+			var depth_current: Vector2i = depth_queue.pop_front()
+			for direction in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
+				var neighbor: Vector2i = depth_current + direction
+				if walkable.has(neighbor) and not night_depth_flow.has(neighbor):
+					night_depth_flow[neighbor] = int(night_depth_flow[depth_current]) + 1
+					depth_queue.append(neighbor)
+		night_exit_distance = maxi(1, int(night_depth_flow.get(exit_cell, 1)))
+	else:
+		night_depth_flow.clear()
+		night_exit_distance = 1
+	dark_timer = 0.0
 	state = "playing"
 	if level_kind == "surface":
-		message = "Pick up gear with F • press B to craft"
+		if level_theme == "night_jungle":
+			message = "Gather wood, leaves and flint — the fire mashal lights the way"
+		else:
+			message = "Pick up gear with F • press B to craft"
 	elif level_index == 1:
 		message = "Recover the three light shards"
 	else:
@@ -1353,7 +1451,10 @@ func load_level(index: int) -> void:
 			continue
 		if spirit_cells.has(spirit_cell):
 			continue
-		if recipe_id != "logs" and recipe_index_for_id(recipe_id) < 0:
+		if recipe_id != "logs" and recipe_index_for_id(recipe_id) < 0 and not MATERIAL_SPIRITS.has(recipe_id):
+			continue
+		# A material spirit already earned in an earlier level stays collected.
+		if MATERIAL_SPIRITS.has(recipe_id) and unlocked_ideas.has(recipe_id):
 			continue
 		if seen_recipe_ids.has(recipe_id):
 			continue
@@ -1387,19 +1488,28 @@ func distribute_surface_items() -> void:
 	# Loose gear scattered on the reachable bank. Guarantees the craft recipes
 	# work: >= LIFE_JACKET_BOTTLES empty bottles plus the fishing-catcher bottle+rope.
 	var bag: Array = []
-	for i in range(20):
-		bag.append("empty bottle")
-	var rope_count := 3 if level_theme == "jungle" else 2
-	for i in range(rope_count):
-		bag.append("rope")
-	for i in range(1):
-		bag.append("wood scrap")
-	for i in range(1):
-		bag.append("plastic wrapper")
-	for i in range(1):
-		bag.append("coiled spring")
-	for i in range(12):
-		bag.append("leaves")
+	if level_theme == "night_jungle":
+		# Enough flint, wood and leaves for the fire mashal and camp fire.
+		for i in range(3):
+			bag.append("flint stone")
+		for i in range(10):
+			bag.append("wood")
+		for i in range(16):
+			bag.append("leaves")
+	else:
+		for i in range(20):
+			bag.append("empty bottle")
+		var rope_count := 3 if level_theme == "jungle" else 2
+		for i in range(rope_count):
+			bag.append("rope")
+		for i in range(1):
+			bag.append("wood scrap")
+		for i in range(1):
+			bag.append("plastic wrapper")
+		for i in range(1):
+			bag.append("coiled spring")
+		for i in range(12):
+			bag.append("leaves")
 	# Candidate cells: land reachable on foot from the start (no water, no walls).
 	var seen: Dictionary = {}
 	seen[start_cell] = true
@@ -1515,7 +1625,7 @@ func _recompute_active_weapon() -> void:
 	# weapon, or clear it when the last weapon is gone.
 	if active_weapon != "" and _gear_worn(active_weapon) and _is_weapon(active_weapon):
 		return
-	for id in ["sword", "shotgun", "axe", "shovel"]:
+	for id in ["sword", "shotgun", "axe", "shovel", "fire_mashal"]:
 		if _gear_worn(String(id)):
 			active_weapon = String(id)
 			return
@@ -1544,6 +1654,7 @@ func _process(delta: float) -> void:
 		if level_kind == "surface":
 			update_surface_level()
 			update_drowning(delta)
+			update_night_darkness(delta)
 		else:
 			update_enemies(delta)
 			collect_shards()
@@ -1680,6 +1791,11 @@ func attack() -> void:
 		})
 		_sfx("attack")
 		return
+	if active_weapon == "fire_mashal" and has_fire_mashal:
+		attack_cooldown = ATTACK_COOLDOWN
+		spawn_burst(player_position + player_facing * 0.5, accent_color, 6)
+		_sfx("attack")
+		return
 	if active_weapon == "shovel" and has_shovel:
 		if try_dig_soil():
 			return
@@ -1812,6 +1928,51 @@ func drown_damage() -> void:
 		message_timer = 99.0
 		_sfx("lose")
 
+func night_depth_fraction() -> float:
+	if level_theme != "night_jungle":
+		return 0.0
+	var distance := int(night_depth_flow.get(cell_at(player_position), 0))
+	return clampf(float(distance) / float(maxi(1, night_exit_distance)), 0.0, 1.0)
+
+func night_darkness() -> float:
+	var base := night_depth_fraction()
+	if has_fire_mashal:
+		base *= NIGHT_TORCH_DARKNESS
+	return base
+
+func night_light_radius() -> float:
+	var base := lerpf(NIGHT_VISIBILITY_MAX, NIGHT_VISIBILITY_MIN, night_depth_fraction())
+	if has_fire_mashal:
+		return maxf(base, NIGHT_TORCH_RADIUS)
+	return base
+
+func update_night_darkness(delta: float) -> void:
+	if state != "playing" or level_theme != "night_jungle":
+		dark_timer = 0.0
+		return
+	if night_darkness() < NIGHT_LOST_THRESHOLD:
+		dark_timer = 0.0
+		return
+	dark_timer += delta
+	if dark_timer >= NIGHT_DARKNESS_INTERVAL:
+		dark_timer = 0.0
+		dark_damage()
+
+func dark_damage() -> void:
+	if state != "playing":
+		return
+	health = maxi(0, health - 1)
+	message = "The jungle is too dark — you're lost, get back to the light!"
+	message_timer = 1.8
+	spawn_burst(player_position, void_color.lightened(0.2), 8)
+	add_shake(0.22)
+	_sfx("drown")
+	if health <= 0:
+		state = "lost"
+		message = "The night swallowed you — you got lost and died"
+		message_timer = 99.0
+		_sfx("lose")
+
 func collect_shards() -> void:
 	for shard in shards:
 		if not bool(shard["taken"]) and player_position.distance_to(shard["position"]) < 0.62:
@@ -1839,7 +2000,7 @@ func collect_shards() -> void:
 			message_timer = 99.0
 			_sfx("win")
 
-const ITEM_ORDER := ["leaves", "plastic wrapper", "rope", "wood scrap", "coiled spring", "log"]
+const ITEM_ORDER := ["leaves", "plastic wrapper", "rope", "wood scrap", "coiled spring", "log", "flint stone", "wood", "fire mashal"]
 const ITEM_LABELS := {
 	"leaves": "LEAVES",
 	"plastic wrapper": "PLASTIC WRAPPERS",
@@ -1848,6 +2009,9 @@ const ITEM_LABELS := {
 	"coiled spring": "COILED SPRINGS",
 	"empty bottle": "EMPTY BOTTLES",
 	"log": "LOGS",
+	"flint stone": "FLINT STONES",
+	"wood": "WOOD",
+	"fire mashal": "FIRE MASHALS",
 }
 const ITEM_SINGULAR_LABELS := {
 	"leaves": "LEAF",
@@ -1857,6 +2021,9 @@ const ITEM_SINGULAR_LABELS := {
 	"coiled spring": "COILED SPRING",
 	"empty bottle": "EMPTY BOTTLE",
 	"log": "LOG",
+	"flint stone": "FLINT STONE",
+	"wood": "WOOD",
+	"fire mashal": "FIRE MASHAL",
 }
 # Buildable recipes. "bottles" groups every empty bottle source; other keys
 # are item kinds (ITEM_ORDER). Add a new entry here to offer another build.
@@ -1885,7 +2052,38 @@ const RECIPES := [
 		"blurb": "One scrap of wood for a warm fire",
 		"needs": {"wood scrap": 1},
 	},
+	{
+		"id": "fire_mashal",
+		"name": "FIRE MASHAL",
+		"blurb": "A flint-struck torch to hold back the night",
+		"needs": {"wood": 1, "flint stone": 1, "leaves": 2},
+	},
+	{
+		"id": "camp_fire",
+		"name": "CAMP FIRE",
+		"blurb": "A flint-struck blaze of wood and leaves",
+		"needs": {"wood": 3, "flint stone": 1, "leaves": 3},
+	},
+	{
+		"id": "camp_fire_from_torch",
+		"name": "CAMP FIRE",
+		"blurb": "Rebuild the fire mashal into a bigger blaze",
+		"needs": {"fire mashal": 1, "wood": 2, "leaves": 1},
+	},
 ]
+
+# Material spirits gate the use of their material in the night-jungle recipes:
+# the flint-stone, wood and leaves spirits must all have been collected first.
+const MATERIAL_IDEAS := {
+	"flint stone": "flint_stone",
+	"wood": "wood",
+	"leaves": "leaves",
+}
+const MATERIAL_SPIRITS := {
+	"flint_stone": "The spirit of flint stone — the night fires are within reach!",
+	"wood": "The spirit of wood — fuel for the night fires!",
+	"leaves": "The spirit of leaves — kindling ideas crackle!",
+}
 
 func nearest_litter_index() -> int:
 	var best := -1
@@ -2032,6 +2230,9 @@ func try_collect_spirit() -> bool:
 			unlocked_ideas["boat"] = true
 			unlocked_ideas["fire"] = true
 			message = "The spirit of logs — boat and fire ideas unlocked!"
+		elif MATERIAL_SPIRITS.has(String(spirit["recipe"])):
+			unlocked_ideas[String(spirit["recipe"])] = true
+			message = String(MATERIAL_SPIRITS[String(spirit["recipe"])])
 		else:
 			var recipe_i := recipe_index_for_id(String(spirit["recipe"]))
 			if recipe_i >= 0:
@@ -2145,6 +2346,12 @@ func recipe_built(index: int) -> bool:
 			return has_boat or boat_on_ground
 		"fire":
 			return has_fire
+		"fire_mashal":
+			return has_fire_mashal
+		"camp_fire":
+			return has_camp_fire
+		"camp_fire_from_torch":
+			return has_camp_fire
 		_:
 			return false
 
@@ -2180,16 +2387,37 @@ func recipe_index_for_id(id: String) -> int:
 func is_idea_unlocked(index: int) -> bool:
 	return unlocked_ideas.has(String(RECIPES[index]["id"]))
 
+func material_idea_for(kind: String) -> String:
+	return String(MATERIAL_IDEAS.get(kind, ""))
+
+func material_ideas_ready(needs: Dictionary) -> bool:
+	for kind in needs:
+		var idea := material_idea_for(String(kind))
+		if idea != "" and not unlocked_ideas.has(idea):
+			return false
+	return true
+
+func recipe_available(index: int) -> bool:
+	if index < 0 or index >= RECIPES.size():
+		return false
+	# Night-fire recipes are gated by the material spirits, not by one idea.
+	var needs := recipe_needs(index)
+	if needs.has("flint stone") or needs.has("wood") or needs.has("leaves") or needs.has("fire mashal"):
+		return material_ideas_ready(needs)
+	return is_idea_unlocked(index)
+
 func recipe_for_build_kind(kind: String) -> int:
+	# Skip recipes already built so a material can offer its next craft (e.g.
+	# wood first makes the fire mashal, then the camp fire).
 	for index in range(RECIPES.size()):
-		if RECIPES[index]["needs"].has(kind) and is_idea_unlocked(index):
+		if RECIPES[index]["needs"].has(kind) and recipe_available(index) and not recipe_built(index):
 			return index
 	return -1
 
 func recipes_for_item(kind: String) -> Array:
 	var found: Array = []
 	for index in range(RECIPES.size()):
-		if RECIPES[index]["needs"].has(kind) and is_idea_unlocked(index):
+		if RECIPES[index]["needs"].has(kind) and recipe_available(index):
 			found.append(index)
 	return found
 
@@ -2207,6 +2435,8 @@ func consume_inventory(kind: String, count: int) -> void:
 		bottle_count = maxi(0, bottle_count - count)
 	else:
 		item_inventory[kind] = maxi(0, int(item_inventory.get(kind, 0)) - count)
+	if kind == "fire mashal":
+		has_fire_mashal = int(item_inventory.get("fire mashal", 0)) > 0
 
 func clamp_craft_selection() -> void:
 	craft_selected = clampi(craft_selected, 0, maxi(0, craft_visible_elements().size() - 1))
@@ -2270,6 +2500,16 @@ func build_selected() -> void:
 		"fire":
 			has_fire = true
 			message = "The wood catches — a fire burns bright"
+		"fire_mashal":
+			has_fire_mashal = true
+			item_inventory["fire mashal"] = 1
+			message = "The fire mashal blazes — the night pulls back"
+		"camp_fire":
+			has_camp_fire = true
+			message = "A camp fire roars against the dark"
+		"camp_fire_from_torch":
+			has_camp_fire = true
+			message = "The mashal becomes a blazing camp fire"
 		_:
 			message = "Crafted!"
 	close_craft_table()
@@ -2278,7 +2518,7 @@ func build_selected() -> void:
 	add_shake(0.32)
 	_sfx("craft_build")
 
-const GEAR_IDS := ["life_jacket", "fishing_catcher", "sword", "shotgun", "axe", "boat", "shovel"]
+const GEAR_IDS := ["life_jacket", "fishing_catcher", "sword", "shotgun", "axe", "boat", "shovel", "fire_mashal"]
 
 func _gear_worn(id: String) -> bool:
 	match id:
@@ -2296,6 +2536,8 @@ func _gear_worn(id: String) -> bool:
 			return has_boat
 		"shovel":
 			return has_shovel
+		"fire_mashal":
+			return has_fire_mashal
 	return false
 
 func _gear_on_ground(id: String) -> bool:
@@ -2314,6 +2556,8 @@ func _gear_on_ground(id: String) -> bool:
 			return boat_on_ground
 		"shovel":
 			return shovel_on_ground
+		"fire_mashal":
+			return fire_mashal_on_ground
 	return false
 
 func _gear_position(id: String) -> Vector2:
@@ -2332,6 +2576,8 @@ func _gear_position(id: String) -> Vector2:
 			return boat_position
 		"shovel":
 			return shovel_position
+		"fire_mashal":
+			return fire_mashal_position
 	return Vector2.ZERO
 
 func _gear_label(id: String) -> String:
@@ -2350,6 +2596,8 @@ func _gear_label(id: String) -> String:
 			return "BOAT"
 		"shovel":
 			return "SHOVEL"
+		"fire_mashal":
+			return "FIRE MASHAL"
 	return id.to_upper()
 
 func _worn_gear_ids() -> Array:
@@ -2390,6 +2638,11 @@ func _drop_gear(id: String) -> void:
 			has_shovel = false
 			shovel_on_ground = true
 			shovel_position = player_position
+		"fire_mashal":
+			has_fire_mashal = false
+			item_inventory["fire mashal"] = 0
+			fire_mashal_on_ground = true
+			fire_mashal_position = player_position
 	_recompute_active_weapon()
 	message = "Dropped " + _gear_label(id)
 	message_timer = 2.8
@@ -2430,6 +2683,11 @@ func _pickup_gear(id: String) -> bool:
 			has_shovel = true
 			shovel_on_ground = false
 			active_weapon = "shovel"
+		"fire_mashal":
+			has_fire_mashal = true
+			item_inventory["fire mashal"] = 1
+			fire_mashal_on_ground = false
+			active_weapon = "fire_mashal"
 	if state == "crafting":
 		close_craft_table()
 	message = "Equipped"
@@ -2486,7 +2744,7 @@ func confirm_drop_selection() -> void:
 	_drop_gear(id)
 
 func _is_weapon(id: String) -> bool:
-	return id == "sword" or id == "shotgun" or id == "axe" or id == "shovel"
+	return id == "sword" or id == "shotgun" or id == "axe" or id == "shovel" or id == "fire_mashal"
 
 func set_main_gear() -> void:
 	if state != "drop_select":
@@ -2517,13 +2775,19 @@ func close_drop_select() -> void:
 func update_surface_level() -> void:
 	if state != "playing":
 		return
+	# The night jungle cannot be crossed without light: the mashal is the ticket.
+	if level_theme == "night_jungle" and not has_fire_mashal:
+		if dark_timer <= 0.0 or message_timer <= 0.0:
+			message = "Too dark to cross — craft the fire mashal"
+			message_timer = 1.6
+		return
 	var exit_position := Vector2(exit_cell) + Vector2(0.5, 0.5)
 	if player_position.distance_to(exit_position) < 0.56:
 		if level_index < LEVELS.size() - 1:
 			load_level(level_index + 1)
 		else:
 			state = "won"
-			message = "You reached the hidden jungle"
+			message = "The fire mashal lit the way — the dark jungle is crossed!" if level_theme == "night_jungle" else "You reached the hidden jungle"
 			message_timer = 99.0
 
 func spawn_burst(position: Vector2, color: Color, count := 8) -> void:
@@ -2759,6 +3023,7 @@ func _draw() -> void:
 	draw_depth_sorted()
 	draw_effects()
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	draw_night_overlay(viewport)
 	draw_hud(viewport)
 
 func draw_atmosphere(viewport: Vector2) -> void:
@@ -3239,6 +3504,11 @@ func draw_depth_sorted() -> void:
 			"depth": iso_to_screen(shovel_position).y,
 			"kind": "dropped_shovel",
 		})
+	if fire_mashal_on_ground:
+		drawables.append({
+			"depth": iso_to_screen(fire_mashal_position).y,
+			"kind": "dropped_mashal",
+		})
 	drawables.append({
 		"depth": iso_to_screen(player_position).y,
 		"kind": "player",
@@ -3293,8 +3563,12 @@ func draw_depth_sorted() -> void:
 				draw_dropped_boat()
 			"dropped_shovel":
 				draw_dropped_shovel()
+			"dropped_mashal":
+				draw_dropped_mashal()
 			"player":
 				draw_player()
+				if has_fire_mashal:
+					draw_fire_mashal()
 			"enemy":
 				var enemy_index: int = drawable["index"]
 				draw_enemy(enemy_index)
@@ -3490,10 +3764,14 @@ func draw_litter_item(item: Dictionary) -> void:
 			draw_rope_coil(position + Vector2(0, -3 + bob))
 		"wood scrap":
 			draw_wood_scrap(position + Vector2(0, -4 + bob))
+		"wood":
+			draw_wood_scrap(position + Vector2(0, -4 + bob))
 		"log":
 			draw_log(position + Vector2(0, -4 + bob))
 		"coiled spring":
 			draw_spring(position + Vector2(0, -6 + bob))
+		"flint stone":
+			draw_flint_stone(position + Vector2(0, -5 + bob))
 	var nearest := nearest_litter_index()
 	if nearest >= 0 and litter[nearest]["position"].is_equal_approx(item["position"]):
 		var prompt := Rect2(position + Vector2(-75, -100), Vector2(150, 44))
@@ -3533,8 +3811,14 @@ func draw_item_icon(kind: String, center: Vector2) -> void:
 			draw_rope_coil(center)
 		"wood scrap":
 			draw_wood_scrap(center)
+		"wood":
+			draw_wood_scrap(center)
 		"log":
 			draw_log(center)
+		"flint stone":
+			draw_flint_stone(center)
+		"fire mashal":
+			draw_mashal_icon(center)
 		_:
 			draw_spring(center)
 
@@ -3586,6 +3870,78 @@ func draw_spring(center: Vector2) -> void:
 	for index in range(5):
 		points.append(center + Vector2(-5.0 if index % 2 == 0 else 5.0, -8.0 + index * 4.0))
 	draw_polyline(points, muted_color.lightened(0.25), 2.0, true)
+
+func draw_flint_stone(center: Vector2) -> void:
+	var stone := Color("4a4f5a")
+	var points := PackedVector2Array([
+		center + Vector2(-7, -1),
+		center + Vector2(-4, -5),
+		center + Vector2(3, -6),
+		center + Vector2(8, -2),
+		center + Vector2(6, 4),
+		center + Vector2(-2, 6),
+		center + Vector2(-7, 3),
+	])
+	draw_colored_polygon(points, stone)
+	draw_colored_polygon(PackedVector2Array([points[0], points[1], points[2], center + Vector2(0, -2)]), stone.lightened(0.3))
+	draw_polyline(PackedVector2Array([points[0], points[1], points[2], points[3], points[4], points[5], points[6], points[0]]), ink_color, 1.0, true)
+	var sparkle := 0.5 + sin(elapsed * 6.0) * 0.5
+	draw_line(center + Vector2(2, -10), center + Vector2(7, -15), Color(paper_color, sparkle), 1.2)
+	draw_line(center + Vector2(-4, -12), center + Vector2(-8, -16), Color(paper_color, sparkle * 0.7), 1.0)
+
+func draw_mashal_icon(center: Vector2) -> void:
+	draw_line(center + Vector2(0, -12), center + Vector2(0, 6), Color("6b4a2a"), 2.0)
+	var flicker := sin(elapsed * 11.0) * 1.2
+	draw_colored_polygon(PackedVector2Array([
+		center + Vector2(-4, -4),
+		center + Vector2(-2, -11 + flicker * 0.3),
+		center + Vector2(0, -14 + flicker),
+		center + Vector2(2, -11 + flicker * 0.3),
+		center + Vector2(4, -4),
+		center + Vector2(0, 0),
+	]), accent_color)
+	draw_colored_polygon(PackedVector2Array([
+		center + Vector2(-2, -4),
+		center + Vector2(-1, -9),
+		center + Vector2(0, -12),
+	]), paper_color.lightened(0.3))
+
+func draw_fire_mashal() -> void:
+	var base := iso_to_screen(player_position)
+	var flicker := sin(elapsed * 11.0) * 1.6 + sin(elapsed * 23.0) * 0.9
+	var stick_top := base + Vector2(0, -40)
+	draw_line(stick_top + Vector2(0, 2), stick_top + Vector2(0, 16), Color("6b4a2a"), 2.0)
+	var flame := PackedVector2Array([
+		stick_top + Vector2(-6, 0),
+		stick_top + Vector2(-3, -12 + flicker * 0.3),
+		stick_top + Vector2(0, -18 + flicker),
+		stick_top + Vector2(3, -12 + flicker * 0.3),
+		stick_top + Vector2(6, 0),
+		stick_top + Vector2(0, 4),
+	])
+	draw_colored_polygon(flame, accent_color.darkened(0.12))
+	draw_colored_polygon(PackedVector2Array([flame[0], flame[1], flame[2], flame[3]]), accent_color)
+	draw_colored_polygon(PackedVector2Array([flame[1], flame[2], flame[3]]), paper_color.lightened(0.25))
+	draw_circle(stick_top + Vector2(0, -8), 13.0, Color(accent_color, 0.10))
+
+func draw_night_overlay(viewport: Vector2) -> void:
+	if level_theme != "night_jungle":
+		return
+	var darkness := night_darkness()
+	if darkness <= 0.02:
+		return
+	var shade := void_color.darkened(0.35)
+	var alpha := clampf(darkness, 0.0, 1.0) * 0.94
+	draw_rect(Rect2(Vector2.ZERO, viewport), Color(shade, alpha), true)
+	# A soft pool of light around the player: layered rings from edge-dark to
+	# centre-clear, so the jungle fades into darkness beyond the light.
+	var radius := night_light_radius() * camera_zoom * 76.0
+	if radius <= 4.0:
+		return
+	var layers := 22
+	for index in range(layers, 0, -1):
+		var t := float(index) / float(layers)
+		draw_circle(iso_to_screen(player_position), radius * t, Color(shade, alpha * t * t))
 
 func draw_bottle(center: Vector2, scale: float, color: Color) -> void:
 	var body := PackedVector2Array([
@@ -4051,6 +4407,31 @@ func draw_dropped_boat() -> void:
 	draw_polyline(PackedVector2Array([hull[0], hull[1], hull[2], hull[3], hull[4], hull[0]]), ink_color, 1.4, true)
 	if player_position.distance_to(boat_position) <= 0.85:
 		draw_dropped_prompt(position, "BOAT", safe_color)
+
+func draw_dropped_mashal() -> void:
+	var position := iso_to_screen(fire_mashal_position)
+	draw_shadow(position, 20.0, 0.3)
+	# The torch lies on the ground, its flame still faint.
+	var stick_base := position + Vector2(-8.0, 6.0)
+	var stick_tip := position + Vector2(10.0, -9.0)
+	draw_line(stick_base, stick_tip, Color("6b4a2a"), 2.4)
+	var flicker := sin(elapsed * 11.0) * 1.2
+	var flame_head := stick_tip + Vector2(3.0, -3.0)
+	draw_colored_polygon(PackedVector2Array([
+		flame_head + Vector2(-4, 2),
+		flame_head + Vector2(-2, -5 + flicker * 0.3),
+		flame_head + Vector2(0, -8 + flicker),
+		flame_head + Vector2(2, -5 + flicker * 0.3),
+		flame_head + Vector2(4, 2),
+		flame_head + Vector2(0, 4),
+	]), accent_color.darkened(0.12))
+	draw_colored_polygon(PackedVector2Array([
+		flame_head + Vector2(-2, 2),
+		flame_head + Vector2(-1, -4),
+		flame_head + Vector2(0, -7),
+	]), paper_color.lightened(0.25))
+	if player_position.distance_to(fire_mashal_position) <= 0.85:
+		draw_dropped_prompt(position, "FIRE MASHAL", accent_color)
 
 func draw_dropped_shovel() -> void:
 	var position := iso_to_screen(shovel_position)

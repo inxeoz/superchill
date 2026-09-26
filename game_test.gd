@@ -84,8 +84,8 @@ func run_test() -> void:
 	if game.has_method("draw_player") == false or game.has_method("draw_pixel_sprite") == false:
 		quit(1)
 		return
-	for level_index in range(6):
-		var valid := validate_surface_level() if level_index == 0 else (validate_jungle_level() if level_index == game.LEVELS.size() - 1 else validate_dungeon_level(level_index))
+	for level_index in range(game.LEVELS.size()):
+		var valid := validate_surface_level() if level_index == 0 else (validate_jungle_level() if level_index == game.LEVELS.size() - 2 else (validate_night_jungle_level() if level_index == game.LEVELS.size() - 1 else validate_dungeon_level(level_index)))
 		if not valid:
 			quit(1)
 			return
@@ -113,9 +113,88 @@ func run_test() -> void:
 	game.shards_collected = game.shard_cells.size()
 	game.player_position = Vector2(game.exit_cell) + Vector2(0.5, 0.5)
 	game.collect_shards()
-	if game.level_index != game.LEVELS.size() - 1 or game.state != "playing":
+	if game.level_index != game.LEVELS.size() - 2 or game.state != "playing":
 		quit(1)
 		return
+	# Cross the old jungle into the night jungle.
+	game.player_position = Vector2(game.exit_cell) + Vector2(0.5, 0.5)
+	game.update_surface_level()
+	if game.level_index != game.LEVELS.size() - 1 or game.state != "playing" or game.level_theme != "night_jungle":
+		quit(1)
+		return
+	# Without the fire mashal the night exit stays sealed.
+	game.player_position = Vector2(game.exit_cell) + Vector2(0.5, 0.5)
+	game.update_surface_level()
+	if game.state != "playing" or game.level_index != game.LEVELS.size() - 1:
+		quit(1)
+		return
+	# The material spirits must be collected before the night recipes open.
+	for spirit in game.spirits:
+		game.player_position = spirit["position"]
+		if not game.try_collect_spirit():
+			quit(1)
+			return
+	if not game.unlocked_ideas.has("flint_stone") or not game.unlocked_ideas.has("wood") or not game.unlocked_ideas.has("leaves"):
+		quit(1)
+		return
+	# Without the mashal the deepest point is fatally dark.
+	game.player_position = Vector2(game.exit_cell) + Vector2(0.5, 0.5)
+	if game.night_darkness() < game.NIGHT_LOST_THRESHOLD:
+		quit(1)
+		return
+	var health_before_dark: int = game.health
+	game.update_night_darkness(game.NIGHT_DARKNESS_INTERVAL)
+	if game.health != health_before_dark - 1:
+		quit(1)
+		return
+	# Craft the fire mashal from wood, flint stone and leaves.
+	game.item_inventory["wood"] = 1
+	game.item_inventory["flint stone"] = 1
+	game.item_inventory["leaves"] = 2
+	game.open_craft_table()
+	var mashal_visible: Array = game.craft_visible_elements()
+	var mashal_pos := -1
+	for i in range(mashal_visible.size()):
+		if game.craft_element_kind(mashal_visible[i]) == "flint stone":
+			mashal_pos = i
+	if mashal_pos < 0 or game.recipe_index_for_id("fire_mashal") < 0:
+		quit(1)
+		return
+	game.craft_selected = mashal_pos
+	game.refresh_recipe_index()
+	if game.recipe_index != game.recipe_index_for_id("fire_mashal"):
+		quit(1)
+		return
+	game.build_selected()
+	if not game.has_fire_mashal or game.state != "playing" or int(game.item_inventory.get("wood", 0)) != 0:
+		quit(1)
+		return
+	# The mashal holds the night back: darkness stays below the fatal line.
+	if game.night_darkness() >= game.NIGHT_LOST_THRESHOLD:
+		quit(1)
+		return
+	# The mashal is wearable gear: drop it and the night returns.
+	game._drop_gear("fire_mashal")
+	if game.has_fire_mashal or not game.fire_mashal_on_ground or int(game.item_inventory.get("fire mashal", 0)) != 0:
+		quit(1)
+		return
+	if game.night_darkness() < game.NIGHT_LOST_THRESHOLD:
+		quit(1)
+		return
+	# Walk back onto it and the gear key picks it up again.
+	game.player_position = game.fire_mashal_position
+	game.handle_gear_key()
+	if not game.has_fire_mashal or game.fire_mashal_on_ground or int(game.item_inventory.get("fire mashal", 0)) != 1:
+		quit(1)
+		return
+	# Like the sword or gun, the mashal can be set as the main gear.
+	if not game._is_weapon("fire_mashal") or game.active_weapon != "fire_mashal":
+		quit(1)
+		return
+	if game.night_darkness() >= game.NIGHT_LOST_THRESHOLD:
+		quit(1)
+		return
+	# With light in hand the deepest crossing completes the level.
 	game.player_position = Vector2(game.exit_cell) + Vector2(0.5, 0.5)
 	game.update_surface_level()
 	if game.state != "won":
@@ -218,15 +297,16 @@ func validate_shotgun() -> bool:
 			return false
 		if not game.walkable.has(game.cell_at(game.shotgun_drops[0])):
 			return false
-	# The jungle level drops two guns on walkable cells.
-	var jungle_index: int = game.LEVELS.size() - 1
-	game.load_level(jungle_index)
-	if game.has_shotgun or game.shotgun_drops.size() != 2:
-		return false
-	for drop in game.shotgun_drops:
-		if not game.walkable.has(game.cell_at(drop)):
+	# The jungle and night-jungle levels each drop two guns on walkable cells.
+	for gun_level_index in [game.LEVELS.size() - 2, game.LEVELS.size() - 1]:
+		game.load_level(gun_level_index)
+		if game.has_shotgun or game.shotgun_drops.size() != 2:
 			return false
-	# Picking one jungle gun leaves the other on the ground.
+		for drop in game.shotgun_drops:
+			if not game.walkable.has(game.cell_at(drop)):
+				return false
+	# Picking one night-jungle gun leaves the other on the ground.
+	game.load_level(game.LEVELS.size() - 1)
 	game.player_position = game.shotgun_drops[0]
 	if not game._pickup_gear("shotgun"):
 		return false
@@ -770,7 +850,7 @@ func validate_surface_level() -> bool:
 
 
 func validate_jungle_craft() -> bool:
-	var jungle_index: int = game.LEVELS.size() - 1
+	var jungle_index: int = game.LEVELS.size() - 2
 	game.load_level(jungle_index)
 	# The axe rests on reachable land near the start of the jungle level.
 	if not game.axe_on_ground or game.has_axe:
@@ -905,7 +985,7 @@ func validate_jungle_craft() -> bool:
 	return game.has_fire and game.state == "playing" and int(game.item_inventory.get("wood scrap", 0)) == 0
 
 func validate_jungle_shovel() -> bool:
-	var jungle_index: int = game.LEVELS.size() - 1
+	var jungle_index: int = game.LEVELS.size() - 2
 	game.load_level(jungle_index)
 	# The shovel rests on reachable land near the start, beside the axe.
 	if not game.shovel_on_ground or game.has_shovel:
@@ -985,9 +1065,78 @@ func validate_jungle_shovel() -> bool:
 	game._drop_gear("shovel")
 	return not game.has_shovel and game.shovel_on_ground
 
+func validate_night_jungle_level() -> bool:
+	var night_index: int = game.LEVELS.size() - 1
+	game.load_level(night_index)
+	if game.level_index != night_index or game.level_kind != "surface" or game.level_theme != "night_jungle" or game.map_rows.size() != 19:
+		return false
+	if game.walkable.is_empty() or game.flow.size() != game.walkable.size():
+		return false
+	if not game.walkable.has(game.start_cell) or not game.flow.has(game.start_cell):
+		return false
+	if not game.walkable.has(game.exit_cell) or not game.flow.has(game.exit_cell):
+		return false
+	for row in game.map_rows:
+		if String(row).length() != 28:
+			return false
+	# Dense dark jungle: solid trees on land, growing thicker with the dark.
+	if game.tree_cells.size() < 40:
+		return false
+	for tree_cell: Vector2i in game.tree_cells:
+		if not game.walkable.has(tree_cell) or game.water_cells.has(tree_cell):
+			return false
+		if game.can_occupy(Vector2(tree_cell) + Vector2(0.5, 0.5), 0.22):
+			return false
+	var shallow_night_trees := 0
+	var deep_night_trees := 0
+	for tree_cell: Vector2i in game.tree_cells:
+		var tree_depth := float(game.night_depth_flow.get(tree_cell, 0)) / float(maxi(1, game.night_exit_distance))
+		if tree_depth >= 0.5:
+			deep_night_trees += 1
+		else:
+			shallow_night_trees += 1
+	if deep_night_trees <= shallow_night_trees:
+		return false
+	# Flint, wood and leaves scatter on the jungle floor.
+	var night_counts: Dictionary = {}
+	for item: Dictionary in game.litter:
+		var kind := String(item["kind"])
+		night_counts[kind] = int(night_counts.get(kind, 0)) + 1
+		if not game.can_occupy(item["position"], 0.22):
+			return false
+	if int(night_counts.get("flint stone", 0)) < 2 or int(night_counts.get("wood", 0)) < 6 or int(night_counts.get("leaves", 0)) < 10:
+		return false
+	# The three material spirits sit on reachable land, each on a unique tile.
+	if game.spirits.size() != 3:
+		return false
+	var seen_night_recipes: Dictionary = {}
+	for spirit: Dictionary in game.spirits:
+		var rid := String(spirit["recipe"])
+		if not ["flint_stone", "wood", "leaves"].has(rid) or seen_night_recipes.has(rid):
+			return false
+		seen_night_recipes[rid] = true
+		var sc: Vector2i = game.cell_at(spirit["position"])
+		if not game.walkable.has(sc) or game.water_cells.has(sc) or game.solid_cells.has(sc):
+			return false
+		if sc == game.start_cell or sc == game.exit_cell:
+			return false
+		if not game.can_occupy(spirit["position"], 0.22):
+			return false
+	# Until the spirits are collected, the night materials unlock nothing.
+	game.item_inventory["flint stone"] = 1
+	game.item_inventory["wood"] = 1
+	game.item_inventory["leaves"] = 3
+	if not game.recipes_for_item("flint stone").is_empty() or not game.recipes_for_item("wood").is_empty():
+		return false
+	if game.recipe_for_build_kind("wood") != -1:
+		return false
+	# The deepest point is fatally dark without the mashal.
+	game.player_position = Vector2(game.exit_cell) + Vector2(0.5, 0.5)
+	return game.night_darkness() >= game.NIGHT_LOST_THRESHOLD
+
 func validate_jungle_level() -> bool:
-	game.load_level(game.LEVELS.size() - 1)
-	if game.level_index != game.LEVELS.size() - 1 or game.level_kind != "surface" or game.level_theme != "jungle" or game.map_rows.size() != 14:
+	game.load_level(game.LEVELS.size() - 2)
+	if game.level_index != game.LEVELS.size() - 2 or game.level_kind != "surface" or game.level_theme != "jungle" or game.map_rows.size() != 14:
 		return false
 	if game.walkable.is_empty() or game.flow.size() != game.walkable.size():
 		return false
