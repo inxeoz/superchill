@@ -7015,7 +7015,7 @@ func draw_hud(viewport: Vector2) -> void:
 		draw_drop_select(viewport)
 		return
 	draw_plaque(Rect2(30, 24, 330, 76), accent_color)
-	var title := level_name if level_kind == "surface" else "FACETED DEPTHS"
+	var title := level_name if level_kind == "surface" else "SPIRIT OF JUGAAD"
 	draw_string(ui_font, Vector2(50, 57), title, HORIZONTAL_ALIGNMENT_LEFT, -1, 30, paper_color)
 	var level_text := "LEVEL 00 / %02d  •  %s" % [LEVELS.size(), level_name] if level_kind == "surface" else "DEPTH %02d / %02d  •  %s" % [level_index, LEVELS.size() - 1, level_name]
 	draw_string(ui_font, Vector2(51, 83), level_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, accent_color)
