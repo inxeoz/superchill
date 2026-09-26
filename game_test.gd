@@ -85,7 +85,17 @@ func run_test() -> void:
 		quit(1)
 		return
 	for level_index in range(game.LEVELS.size()):
-		var valid := validate_surface_level() if level_index == 0 else (validate_jungle_level() if level_index == game.LEVELS.size() - 2 else (validate_night_jungle_level() if level_index == game.LEVELS.size() - 1 else validate_dungeon_level(level_index)))
+		var valid := false
+		if level_index == 0:
+			valid = validate_surface_level()
+		elif level_index == radio_level_index():
+			valid = validate_radio_level()
+		elif level_index == game.LEVELS.size() - 2:
+			valid = validate_jungle_level()
+		elif level_index == game.LEVELS.size() - 1:
+			valid = validate_night_jungle_level()
+		else:
+			valid = validate_dungeon_level(level_index)
 		if not valid:
 			quit(1)
 			return
@@ -113,9 +123,11 @@ func run_test() -> void:
 	game.shards_collected = game.shard_cells.size()
 	game.player_position = Vector2(game.exit_cell) + Vector2(0.5, 0.5)
 	game.collect_shards()
-	if game.level_index != game.LEVELS.size() - 2 or game.state != "playing":
+	if game.level_index != radio_level_index() or game.state != "playing" or game.level_theme != "radio_jungle":
 		quit(1)
 		return
+	# The radio level is crossed by helicopter; the old jungle chain continues from itself.
+	game.load_level(game.LEVELS.size() - 2)
 	# Cross the old jungle into the night jungle.
 	game.player_position = Vector2(game.exit_cell) + Vector2(0.5, 0.5)
 	game.update_surface_level()
@@ -253,6 +265,12 @@ func run_test() -> void:
 		return
 	print("game_test: ok")
 	quit(0)
+
+func radio_level_index() -> int:
+	for index in range(game.LEVELS.size()):
+		if String(game.LEVELS[index].get("theme", "")) == "radio_jungle":
+			return index
+	return -1
 
 func validate_occlusion_reveal() -> bool:
 	game.load_level(1)
@@ -1163,6 +1181,102 @@ func validate_night_jungle_level() -> bool:
 	# The deepest point is fatally dark without the mashal.
 	game.player_position = Vector2(game.exit_cell) + Vector2(0.5, 0.5)
 	return game.night_darkness() >= game.NIGHT_LOST_THRESHOLD
+
+func validate_radio_level() -> bool:
+	var radio_index := radio_level_index()
+	if radio_index < 0:
+		return false
+	game.load_level(radio_index)
+	if game.level_index != radio_index or game.level_kind != "surface" or game.level_theme != "radio_jungle" or game.map_rows.size() != 18:
+		return false
+	if game.walkable.is_empty() or game.flow.size() != game.walkable.size():
+		return false
+	if not game.walkable.has(game.start_cell) or not game.flow.has(game.start_cell):
+		return false
+	if game.water_cells.size() != 0 or not game.enemies.is_empty() or not game.shards.is_empty():
+		return false
+	# The night palette stands alone: no dark overlay circles, and no dark damage.
+	if game.night_darkness() > 0.02:
+		return false
+	var health_before_night: int = game.health
+	game.update_night_darkness(game.NIGHT_DARKNESS_INTERVAL * 3.0)
+	if game.health != health_before_night or game.dark_timer != 0.0:
+		return false
+	for row in game.map_rows:
+		if String(row).length() != 30:
+			return false
+	# The radio station sits on an unreachable mesa: the exit cell is solid.
+	if game.walkable.has(game.exit_cell) or game.station_cell != game.exit_cell:
+		return false
+	if not game.walkable.has(game.rope_cell):
+		return false
+	# The cliff base beside the station is reachable on foot.
+	var cliff_cell := Vector2i(26, 4)
+	if not game.walkable.has(cliff_cell) or not game.flow.has(cliff_cell):
+		return false
+	if game.solid_cells.size() != game.tree_cells.size():
+		return false
+	for tree_cell: Vector2i in game.tree_cells:
+		if not game.walkable.has(tree_cell) or game.can_occupy(Vector2(tree_cell) + Vector2(0.5, 0.5), 0.22):
+			return false
+	# Aluminum foil scatters on reachable land.
+	var foil_count := 0
+	for item: Dictionary in game.litter:
+		var item_cell: Vector2i = game.cell_at(item["position"])
+		if not game.walkable.has(item_cell) or not game.flow.has(item_cell):
+			return false
+		if not game.can_occupy(item["position"], 0.22):
+			return false
+		if String(item["kind"]) == "aluminum foil":
+			foil_count += 1
+	if foil_count < 3:
+		return false
+	# The radio receiver rests on land a short walk from the start.
+	if not game.receiver_on_ground or game.has_radio_receiver:
+		return false
+	var receiver_cell: Vector2i = game.cell_at(game.receiver_position)
+	if not game.walkable.has(receiver_cell) or not game.flow.has(receiver_cell):
+		return false
+	if Vector2(receiver_cell).distance_to(Vector2(game.start_cell)) > 6.0:
+		return false
+	# Carry the receiver: without foil the signal at the cliff is too weak.
+	game.player_position = game.receiver_position
+	if not game._pickup_gear("radio_receiver"):
+		return false
+	if not game.has_radio_receiver or game.receiver_on_ground or game.active_weapon != "radio_receiver":
+		return false
+	if not game._is_weapon("radio_receiver"):
+		return false
+	game.player_position = Vector2(cliff_cell) + Vector2(0.5, 0.5)
+	if game.radio_strength() >= game.RADIO_RECEIVE_THRESHOLD:
+		return false
+	game.update_surface_level()
+	if game.signal_sent:
+		return false
+	# A foil reflector at the cliff bounces the signal back to the station.
+	game.item_inventory["aluminum foil"] = 1
+	if not game.try_place_foil():
+		return false
+	if int(game.item_inventory.get("aluminum foil", 0)) != 0 or game.foil_placed_cells.size() != 1:
+		return false
+	if game.radio_strength() < game.RADIO_RECEIVE_THRESHOLD:
+		return false
+	game.update_surface_level()
+	if not game.signal_sent:
+		return false
+	# The receiver can be dropped like any gear.
+	game._drop_gear("radio_receiver")
+	if game.has_radio_receiver or not game.receiver_on_ground or game.active_weapon == "radio_receiver":
+		return false
+	# Once the signal is sent the helicopter arrives; the rope exits the level.
+	game.elapsed = game.helicopter_start + game.HELICOPTER_FLY_TIME
+	if game.helicopter_progress() < 1.0:
+		return false
+	game.player_position = game.rope_position()
+	game._pickup_gear("radio_receiver")
+	if not game.try_helicopter_escape():
+		return false
+	return game.state == "playing" and game.level_index == radio_index + 1
 
 func validate_jungle_level() -> bool:
 	game.load_level(game.LEVELS.size() - 2)

@@ -29,6 +29,7 @@ const ITEM_PHRASES := {
 	"flint stone": "a flint stone",
 	"wood": "a piece of wood",
 	"fire mashal": "a fire mashal",
+	"aluminum foil": "a sheet of aluminum foil",
 }
 const ITEM_PLURALS := {
 	"leaves": "leaves",
@@ -41,6 +42,7 @@ const ITEM_PLURALS := {
 	"flint stone": "flint stones",
 	"wood": "pieces of wood",
 	"fire mashal": "fire mashals",
+	"aluminum foil": "sheets of aluminum foil",
 }
 const DEFAULT_CAMERA_ZOOM := 1.08
 const CAMERA_ZOOM_MIN := 0.55
@@ -263,6 +265,58 @@ const LEVELS := [
 		"gate": "5b4a86",
 		"paper": "f3edff",
 		"muted": "a9a6cf",
+	},
+	{
+		"name": "SEND HELP MESSAGE",
+		"kind": "surface",
+		"theme": "radio_jungle",
+		"map": [
+			"##############################",
+			"#..........................###",
+			"#..........................###",
+			"#..................M.......###",
+			"#..........................###",
+			"#.............M............###",
+			"#..........................###",
+			"#.......M..................###",
+			"#..........................###",
+			"#........M.................###",
+			"#..........................###",
+			"#..........................###",
+			"#..........................###",
+			"#..........................###",
+			"#..........M...............###",
+			"#..........................###",
+			"#..........................###",
+			"##############################",
+		],
+		"shards": [],
+		"spawns": [],
+		"trees": [Vector2i(4, 5), Vector2i(8, 3), Vector2i(11, 6), Vector2i(15, 11), Vector2i(18, 5), Vector2i(21, 2), Vector2i(7, 12), Vector2i(10, 9), Vector2i(13, 13), Vector2i(17, 14), Vector2i(22, 6), Vector2i(5, 9), Vector2i(12, 4), Vector2i(19, 10), Vector2i(24, 3)],
+		"receiver_cell": Vector2i(3, 14),
+		"station_cell": Vector2i(27, 4),
+		"rope_cell": Vector2i(25, 8),
+		"start": Vector2i(1, 16),
+		"exit": Vector2i(27, 4),
+		"void": "081410",
+		"deep": "0c241b",
+		"ink": "123126",
+		"ink_soft": "1a4533",
+		"wall_alt": "23563e",
+		"slate": "26603f",
+		"slate_light": "3a7d55",
+		"floor_mist": "2f6b48",
+		"floor_petrol": "47865a",
+		"floor_plum": "5b7a44",
+		"soil": "5a4526",
+		"accent": "ffc857",
+		"safe": "7fe3d0",
+		"danger": "e0564b",
+		"enemy": "3a9e5f",
+		"enemy_accent": "ffc857",
+		"gate": "3f5a4a",
+		"paper": "f2ead2",
+		"muted": "93a897",
 	},
 	{
 		"name": "JUNGLE",
@@ -1070,6 +1124,15 @@ var has_camp_fire := false
 var has_shovel := false
 var shovel_on_ground := false
 var shovel_position := Vector2.ZERO
+var has_radio_receiver := false
+var receiver_on_ground := false
+var receiver_position := Vector2.ZERO
+var foil_placed_cells: Dictionary = {}
+var signal_sent := false
+var helicopter_start := 0.0
+var helicopter_announced := false
+var station_cell := Vector2i(-1, -1)
+var rope_cell := Vector2i(-1, -1)
 var dug_cells: Dictionary = {}
 var active_weapon := "sword"
 var drop_selected := 0
@@ -1097,6 +1160,12 @@ const NIGHT_TORCH_DARKNESS := 0.45
 const NIGHT_TORCH_RADIUS := 3.4
 const NIGHT_VISIBILITY_MAX := 3.6
 const NIGHT_VISIBILITY_MIN := 1.1
+const RADIO_RANGE := 2.6
+const RADIO_FOIL_BOOST := 0.55
+const RADIO_FOIL_DIST := 4.0
+const RADIO_RECEIVE_THRESHOLD := 0.85
+const RADIO_PLACE_RADIUS := 4.5
+const HELICOPTER_FLY_TIME := 3.5
 const SFX_FILES := {
 	"attack": "rpg/rpg_012.wav",
 	"enemy_hit": "hit/hit_001.wav",
@@ -1361,8 +1430,21 @@ func load_level(index: int) -> void:
 	fire_mashal_position = Vector2.ZERO
 	has_camp_fire = false
 	has_shovel = false
+	has_radio_receiver = false
+	receiver_on_ground = false
+	receiver_position = Vector2.ZERO
 	shovel_on_ground = false
 	shovel_position = Vector2.ZERO
+	foil_placed_cells.clear()
+	signal_sent = false
+	helicopter_start = 0.0
+	helicopter_announced = false
+	station_cell = Vector2i(level.get("station_cell", Vector2i(-1, -1)))
+	if station_cell.x < 0:
+		station_cell = exit_cell
+	rope_cell = Vector2i(level.get("rope_cell", Vector2i(-1, -1)))
+	if rope_cell.x < 0:
+		rope_cell = exit_cell
 	dug_cells.clear()
 	active_weapon = "sword"
 	var axe_cell: Vector2i = level.get("axe_cell", Vector2i(-1, -1))
@@ -1373,6 +1455,10 @@ func load_level(index: int) -> void:
 	if shovel_cell.x >= 0:
 		shovel_on_ground = true
 		shovel_position = Vector2(shovel_cell) + Vector2(0.5, 0.5)
+	var receiver_cell: Vector2i = level.get("receiver_cell", Vector2i(-1, -1))
+	if receiver_cell.x >= 0:
+		receiver_on_ground = true
+		receiver_position = Vector2(receiver_cell) + Vector2(0.5, 0.5)
 	if level_theme == "jungle" or level_theme == "night_jungle":
 		shotgun_drops = find_gun_drop_cells(2)
 	elif level_kind != "surface":
@@ -1398,6 +1484,8 @@ func load_level(index: int) -> void:
 	if level_kind == "surface":
 		if level_theme == "night_jungle":
 			message = "Gather wood, leaves and flint — the fire mashal lights the way"
+		elif level_theme == "radio_jungle":
+			message = "Find the radio receiver and aluminum foil — reflect the station signal to call for help"
 		else:
 			message = "Pick up gear with F • press B to craft"
 	elif level_index == 1:
@@ -1496,6 +1584,10 @@ func distribute_surface_items() -> void:
 			bag.append("wood")
 		for i in range(16):
 			bag.append("leaves")
+	elif level_theme == "radio_jungle":
+		# Foil sheets for the radio reflector near the station.
+		for i in range(5):
+			bag.append("aluminum foil")
 	else:
 		for i in range(20):
 			bag.append("empty bottle")
@@ -1518,13 +1610,14 @@ func distribute_surface_items() -> void:
 	var candidates: Array = []
 	var axe_block := cell_at(axe_position) if axe_on_ground else Vector2i(-1, -1)
 	var shovel_block := cell_at(shovel_position) if shovel_on_ground else Vector2i(-1, -1)
+	var receiver_block := cell_at(receiver_position) if receiver_on_ground else Vector2i(-1, -1)
 	while not queue.is_empty():
 		var current: Vector2i = queue.pop_front()
-		if walkable.has(current) and not water_cells.has(current) and not solid_cells.has(current) and not spirit_cells.has(current) and current != start_cell and current != axe_block and current != shovel_block:
+		if walkable.has(current) and not water_cells.has(current) and not solid_cells.has(current) and not spirit_cells.has(current) and current != start_cell and current != axe_block and current != shovel_block and current != receiver_block:
 			candidates.append(current)
 		for direction in directions:
 			var neighbor: Vector2i = current + direction
-			if walkable.has(neighbor) and not water_cells.has(neighbor) and not solid_cells.has(neighbor) and not spirit_cells.has(neighbor) and neighbor != axe_block and neighbor != shovel_block and not seen.has(neighbor):
+			if walkable.has(neighbor) and not water_cells.has(neighbor) and not solid_cells.has(neighbor) and not spirit_cells.has(neighbor) and neighbor != axe_block and neighbor != shovel_block and neighbor != receiver_block and not seen.has(neighbor):
 				seen[neighbor] = true
 				queue.append(neighbor)
 	# Random layout: one item per cell, blended kinds.
@@ -1625,7 +1718,7 @@ func _recompute_active_weapon() -> void:
 	# weapon, or clear it when the last weapon is gone.
 	if active_weapon != "" and _gear_worn(active_weapon) and _is_weapon(active_weapon):
 		return
-	for id in ["sword", "shotgun", "axe", "shovel", "fire_mashal"]:
+	for id in ["sword", "shotgun", "axe", "shovel", "fire_mashal", "radio_receiver"]:
 		if _gear_worn(String(id)):
 			active_weapon = String(id)
 			return
@@ -1791,7 +1884,7 @@ func attack() -> void:
 		})
 		_sfx("attack")
 		return
-	if (active_weapon == "fire_mashal" and has_fire_mashal) or (active_weapon == "life_jacket" and has_life_jacket) or (active_weapon == "boat" and has_boat):
+	if (active_weapon == "fire_mashal" and has_fire_mashal) or (active_weapon == "life_jacket" and has_life_jacket) or (active_weapon == "boat" and has_boat) or (active_weapon == "radio_receiver" and has_radio_receiver):
 		# Holding a protective item in hand: a small flourish, no attack.
 		attack_cooldown = ATTACK_COOLDOWN
 		spawn_burst(player_position + player_facing * 0.5, accent_color, 6)
@@ -2525,7 +2618,7 @@ func build_selected() -> void:
 	add_shake(0.32)
 	_sfx("craft_build")
 
-const GEAR_IDS := ["life_jacket", "fishing_catcher", "sword", "shotgun", "axe", "boat", "shovel", "fire_mashal"]
+const GEAR_IDS := ["life_jacket", "fishing_catcher", "sword", "shotgun", "axe", "boat", "shovel", "fire_mashal", "radio_receiver"]
 
 func _gear_worn(id: String) -> bool:
 	match id:
@@ -2545,6 +2638,8 @@ func _gear_worn(id: String) -> bool:
 			return has_shovel
 		"fire_mashal":
 			return has_fire_mashal
+		"radio_receiver":
+			return has_radio_receiver
 	return false
 
 func _gear_on_ground(id: String) -> bool:
@@ -2565,6 +2660,8 @@ func _gear_on_ground(id: String) -> bool:
 			return shovel_on_ground
 		"fire_mashal":
 			return fire_mashal_on_ground
+		"radio_receiver":
+			return receiver_on_ground
 	return false
 
 func _gear_position(id: String) -> Vector2:
@@ -2585,6 +2682,8 @@ func _gear_position(id: String) -> Vector2:
 			return shovel_position
 		"fire_mashal":
 			return fire_mashal_position
+		"radio_receiver":
+			return receiver_position
 	return Vector2.ZERO
 
 func _gear_label(id: String) -> String:
@@ -2605,6 +2704,8 @@ func _gear_label(id: String) -> String:
 			return "SHOVEL"
 		"fire_mashal":
 			return "FIRE MASHAL"
+		"radio_receiver":
+			return "RADIO RECEIVER"
 	return id.to_upper()
 
 func _worn_gear_ids() -> Array:
@@ -2650,6 +2751,10 @@ func _drop_gear(id: String) -> void:
 			item_inventory["fire mashal"] = 0
 			fire_mashal_on_ground = true
 			fire_mashal_position = player_position
+		"radio_receiver":
+			has_radio_receiver = false
+			receiver_on_ground = true
+			receiver_position = player_position
 	_recompute_active_weapon()
 	message = "Dropped " + _gear_label(id)
 	message_timer = 2.8
@@ -2697,6 +2802,10 @@ func _pickup_gear(id: String) -> bool:
 			item_inventory["fire mashal"] = 1
 			fire_mashal_on_ground = false
 			active_weapon = "fire_mashal"
+		"radio_receiver":
+			has_radio_receiver = true
+			receiver_on_ground = false
+			active_weapon = "radio_receiver"
 	if state == "crafting":
 		close_craft_table()
 	message = "Equipped"
@@ -2753,7 +2862,7 @@ func confirm_drop_selection() -> void:
 	_drop_gear(id)
 
 func _is_weapon(id: String) -> bool:
-	return id == "sword" or id == "shotgun" or id == "axe" or id == "shovel" or id == "fire_mashal" or id == "life_jacket" or id == "boat"
+	return id == "sword" or id == "shotgun" or id == "axe" or id == "shovel" or id == "fire_mashal" or id == "life_jacket" or id == "boat" or id == "radio_receiver"
 
 func set_main_gear() -> void:
 	if state != "drop_select":
@@ -2781,8 +2890,97 @@ func close_drop_select() -> void:
 	state = "playing"
 	message_timer = 0.0
 
+func station_position() -> Vector2:
+	return Vector2(station_cell) + Vector2(0.5, 0.5)
+
+func rope_position() -> Vector2:
+	return Vector2(rope_cell) + Vector2(0.5, 0.5)
+
+func radio_strength() -> float:
+	if level_theme != "radio_jungle":
+		return 0.0
+	if not (has_radio_receiver and active_weapon == "radio_receiver"):
+		return 0.0
+	var dist := player_position.distance_to(station_position())
+	var dist_factor := clampf(1.0 - dist / RADIO_RANGE, 0.0, 1.0)
+	var boost := 0.0
+	for cell in foil_placed_cells:
+		var d := player_position.distance_to(Vector2(cell) + Vector2(0.5, 0.5))
+		boost += RADIO_FOIL_BOOST * clampf(1.0 - d / RADIO_FOIL_DIST, 0.0, 1.0)
+	return clampf(dist_factor * 0.55 + boost, 0.0, 1.0)
+
+func try_place_foil() -> bool:
+	if state != "playing" or level_theme != "radio_jungle":
+		return false
+	if int(item_inventory.get("aluminum foil", 0)) <= 0:
+		return false
+	var place_cell := cell_at(player_position)
+	if Vector2(place_cell).distance_to(station_position()) > RADIO_PLACE_RADIUS:
+		return false
+	if foil_placed_cells.has(place_cell):
+		message = "A foil reflector is already set up here"
+		message_timer = 2.0
+		_sfx("craft_fail")
+		return true
+	foil_placed_cells[place_cell] = true
+	item_inventory["aluminum foil"] = maxi(0, int(item_inventory.get("aluminum foil", 0)) - 1)
+	message = "You set up the foil reflector — the signal bounces back to the station"
+	message_timer = 2.6
+	spawn_burst(Vector2(place_cell) + Vector2(0.5, 0.5), paper_color.lightened(0.1), 10)
+	add_shake(0.18)
+	_sfx("craft_build")
+	return true
+
+func update_radio_level() -> void:
+	if state != "playing" or level_theme != "radio_jungle":
+		return
+	if not signal_sent:
+		if radio_strength() >= RADIO_RECEIVE_THRESHOLD:
+			signal_sent = true
+			helicopter_start = elapsed
+			message = "The station received your call — a helicopter is on its way!"
+			message_timer = 4.0
+			add_shake(0.2)
+			_sfx("gate_open")
+		return
+	if not helicopter_announced and helicopter_progress() >= 1.0:
+		helicopter_announced = true
+		message = "The helicopter is here — stand under the rope and press ENTER"
+		message_timer = 3.0
+
+func helicopter_progress() -> float:
+	if not signal_sent:
+		return 0.0
+	return clampf((elapsed - helicopter_start) / HELICOPTER_FLY_TIME, 0.0, 1.0)
+
+func try_helicopter_escape() -> bool:
+	if state != "playing" or level_theme != "radio_jungle" or not signal_sent:
+		return false
+	if helicopter_progress() < 1.0:
+		message = "The helicopter is still on its way — wait for the rope"
+		message_timer = 2.2
+		_sfx("craft_fail")
+		return false
+	if player_position.distance_to(rope_position()) > 0.85:
+		message = "Move under the rope to grab it"
+		message_timer = 2.2
+		_sfx("craft_fail")
+		return false
+	if level_index < LEVELS.size() - 1:
+		_sfx("level_load")
+		load_level(level_index + 1)
+	else:
+		state = "won"
+		message = "The helicopter carries you home"
+		message_timer = 99.0
+		_sfx("win")
+	return true
+
 func update_surface_level() -> void:
 	if state != "playing":
+		return
+	if level_theme == "radio_jungle":
+		update_radio_level()
 		return
 	# The night jungle cannot be crossed without light: hold the mashal as main gear.
 	if level_theme == "night_jungle" and not mashal_light_on():
@@ -2955,13 +3153,17 @@ func _unhandled_input(event: InputEvent) -> void:
 		else:
 			if level_kind == "surface" and keycode == KEY_F:
 				if not try_collect_spirit():
-					try_pick_litter()
+					if not try_place_foil():
+						try_pick_litter()
 			elif level_kind == "surface" and keycode == KEY_B:
 				open_craft_table()
 			elif keycode == KEY_G:
 				handle_gear_key()
 			elif keycode == KEY_ENTER or keycode == KEY_KP_ENTER:
-				attack()
+				if level_theme == "radio_jungle" and try_helicopter_escape():
+					pass
+				else:
+					attack()
 			elif keycode == KEY_C:
 				reset_camera()
 			elif keycode == KEY_P and state == "playing":
@@ -3031,6 +3233,7 @@ func _draw() -> void:
 	draw_floors()
 	draw_depth_sorted()
 	draw_effects()
+	draw_helicopter()
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	draw_night_overlay(viewport)
 	draw_hud(viewport)
@@ -3219,12 +3422,20 @@ func draw_floors() -> void:
 
 func grass_on_cell(cell: Vector2i) -> bool:
 	var h := (cell.x * 73856093) ^ (cell.y * 19349663) ^ (level_index * 83492791)
-	var threshold := 40 if level_theme == "jungle" else 27
+	var threshold := 27
+	if level_theme == "jungle":
+		threshold = 40
+	elif level_theme == "radio_jungle":
+		threshold = 52
 	return level_kind == "surface" and ((h & 0x7fffffff) % 100) < threshold
 
 func flower_on_cell(cell: Vector2i) -> bool:
 	var h := (cell.x * 271) ^ (cell.y * 457) ^ (level_index * 119)
-	var threshold := 16 if level_theme == "jungle" else 8
+	var threshold := 8
+	if level_theme == "jungle":
+		threshold = 16
+	elif level_theme == "radio_jungle":
+		threshold = 18
 	return level_kind == "surface" and ((h & 0x7fffffff) % 100) < threshold and grass_on_cell(cell)
 
 func flower_color(cell: Vector2i) -> Color:
@@ -3263,7 +3474,7 @@ func draw_grass_tuft(cell: Vector2i, center: Vector2) -> void:
 	draw_line(center + Vector2(-2, 7), center + Vector2(-2, -8), blade_color.darkened(0.18), 1.4)
 	draw_line(center + Vector2(2, 7), center + Vector2(3, -8), blade_color.darkened(0.18), 1.4)
 	# add a couple of broad leafy blades for the lush variants
-	if level_theme == "jungle":
+	if level_theme == "jungle" or level_theme == "radio_jungle":
 		for b in range(2):
 			var bx := float((h >> (b * 3)) & 0x3) * 3.0 - 3.0
 			var bh := 18.0 + float((h >> (b * 2)) & 0x5) * 2.0
@@ -3474,7 +3685,7 @@ func draw_depth_sorted() -> void:
 			})
 	drawables.append({
 		"depth": iso_to_screen(Vector2(exit_cell) + Vector2(0.5, 0.5)).y,
-		"kind": "exit" if level_kind == "surface" else "gate",
+		"kind": "station" if level_theme == "radio_jungle" else ("exit" if level_kind == "surface" else "gate"),
 	})
 	if life_jacket_on_ground:
 		drawables.append({
@@ -3518,6 +3729,17 @@ func draw_depth_sorted() -> void:
 			"depth": iso_to_screen(fire_mashal_position).y,
 			"kind": "dropped_mashal",
 		})
+	if receiver_on_ground:
+		drawables.append({
+			"depth": iso_to_screen(receiver_position).y,
+			"kind": "dropped_receiver",
+		})
+	for foil_cell in foil_placed_cells:
+		drawables.append({
+			"depth": iso_to_screen(Vector2(foil_cell) + Vector2(0.5, 0.5)).y,
+			"kind": "foil_reflector",
+			"cell": foil_cell,
+		})
 	drawables.append({
 		"depth": iso_to_screen(player_position).y,
 		"kind": "player",
@@ -3556,6 +3778,8 @@ func draw_depth_sorted() -> void:
 				draw_spirit(spirit)
 			"exit":
 				draw_surface_exit()
+			"station":
+				draw_station()
 			"gate":
 				draw_gate()
 			"dropped_jacket":
@@ -3574,10 +3798,17 @@ func draw_depth_sorted() -> void:
 				draw_dropped_shovel()
 			"dropped_mashal":
 				draw_dropped_mashal()
+			"dropped_receiver":
+				draw_dropped_receiver()
+			"foil_reflector":
+				var foil_cell: Vector2i = drawable["cell"]
+				draw_foil_reflector(foil_cell)
 			"player":
 				draw_player()
 				if mashal_light_on():
 					draw_fire_mashal()
+				if has_radio_receiver and active_weapon == "radio_receiver":
+					draw_held_receiver()
 			"enemy":
 				var enemy_index: int = drawable["index"]
 				draw_enemy(enemy_index)
@@ -3615,7 +3846,7 @@ func draw_mountain(cell: Vector2i) -> void:
 
 func draw_wall(cell: Vector2i, height := WALL_HEIGHT, alpha := 1.0) -> void:
 	if level_kind == "surface":
-		height = minf(height, 32.0)
+		height = minf(height, 44.0) if level_theme == "radio_jungle" else minf(height, 32.0)
 	var floor := tile_polygon(cell)
 	var top := tile_polygon(cell, height)
 	var faces := wall_faces(floor, top)
@@ -3781,6 +4012,8 @@ func draw_litter_item(item: Dictionary) -> void:
 			draw_spring(position + Vector2(0, -6 + bob))
 		"flint stone":
 			draw_flint_stone(position + Vector2(0, -5 + bob))
+		"aluminum foil":
+			draw_foil_sheet(position + Vector2(0, -3 + bob))
 	var nearest := nearest_litter_index()
 	if nearest >= 0 and litter[nearest]["position"].is_equal_approx(item["position"]):
 		var prompt := Rect2(position + Vector2(-75, -100), Vector2(150, 44))
@@ -3828,6 +4061,8 @@ func draw_item_icon(kind: String, center: Vector2) -> void:
 			draw_flint_stone(center)
 		"fire mashal":
 			draw_mashal_icon(center)
+		"aluminum foil":
+			draw_foil_sheet(center)
 		_:
 			draw_spring(center)
 
@@ -4597,6 +4832,167 @@ func draw_astral_sentry(enemy: Dictionary, position: Vector2, bob: float) -> voi
 	if int(enemy["health"]) == 1:
 		draw_crystal(position + Vector2(0, -70), 6.0, enemy_accent_color)
 
+func draw_station() -> void:
+	var position := iso_to_screen(station_position())
+	draw_shadow(position, 30.0, 0.36)
+	# Mesa stone column rising from the cliff.
+	var column := PackedVector2Array([
+		position + Vector2(-26, 10),
+		position + Vector2(-6, -74),
+		position + Vector2(6, -74),
+		position + Vector2(26, 10),
+	])
+	draw_colored_polygon(column, slate_color.darkened(0.22))
+	draw_colored_polygon(PackedVector2Array([position + Vector2(-26, 10), position + Vector2(26, 10), position + Vector2(8, 4), position + Vector2(-8, 4)]), slate_color.darkened(0.12))
+	draw_polyline(PackedVector2Array([column[0], column[1], column[2], column[3], column[0]]), ink_color, 1.3, true)
+	# Shack on top of the mesa.
+	var hut := PackedVector2Array([
+		position + Vector2(-14, -74),
+		position + Vector2(14, -74),
+		position + Vector2(18, -86),
+		position + Vector2(-18, -86),
+	])
+	draw_colored_polygon(hut, gate_color.darkened(0.15))
+	draw_colored_polygon(PackedVector2Array([hut[2], hut[3], position + Vector2(0, -94)]), gate_color)
+	draw_polyline(PackedVector2Array([hut[0], hut[1], hut[2], hut[3], hut[0]]), ink_color, 1.3, true)
+	draw_window(position + Vector2(0, -80), Vector2(10, 12))
+	# Antenna mast with a blinking beacon.
+	draw_line(position + Vector2(0, -86), position + Vector2(0, -116), ink_color, 2.2)
+	var blink := 0.5 + 0.5 * sin(elapsed * 5.0)
+	var beacon_color := danger_color if not signal_sent else safe_color
+	draw_circle(position + Vector2(0, -118), 3.0 + blink, beacon_color)
+	draw_circle(position + Vector2(0, -118), 8.0, Color(beacon_color, 0.12))
+	# Radio waves rolling off the mast.
+	for i in range(3):
+		var t := fposmod(elapsed * 0.8 + float(i) * 0.33, 1.0)
+		var wave_radius := 12.0 + t * 52.0
+		draw_arc(position + Vector2(0, -116), wave_radius, -PI * 0.5, PI * 0.5, 20, Color(accent_color if not signal_sent else safe_color, (1.0 - t) * 0.6), 2.0, true)
+	if state == "playing" and not signal_sent and has_radio_receiver and active_weapon == "radio_receiver":
+		if player_position.distance_to(station_position()) <= RADIO_PLACE_RADIUS:
+			var reflect_prompt := "F  SET FOIL REFLECTOR" if int(item_inventory.get("aluminum foil", 0)) > 0 else "FIND ALUMINUM FOIL TO REFLECT"
+			draw_action_prompt(position + Vector2(0, -138), reflect_prompt, accent_color if int(item_inventory.get("aluminum foil", 0)) > 0 else muted_color)
+	elif state == "playing" and not signal_sent and has_radio_receiver and not active_weapon == "radio_receiver":
+		if player_position.distance_to(station_position()) <= RADIO_PLACE_RADIUS:
+			draw_action_prompt(position + Vector2(0, -138), "G  WEAR THE RADIO RECEIVER", muted_color)
+	elif state == "playing" and not signal_sent and not has_radio_receiver and player_position.distance_to(station_position()) <= RADIO_PLACE_RADIUS * 2.0:
+		draw_action_prompt(position + Vector2(0, -138), "THE STATION IS OUT OF REACH", muted_color)
+
+func draw_window(center: Vector2, size: Vector2) -> void:
+	draw_rect(Rect2(center - size * 0.5, size), Color(safe_color, 0.55))
+	draw_line(center + Vector2(-size.x * 0.5, 0), center + Vector2(size.x * 0.5, 0), ink_color, 1.0)
+
+func draw_action_prompt(position: Vector2, label: String, accent: Color) -> void:
+	var label_w := ui_font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
+	var box_w := maxf(180.0, label_w + 30.0)
+	var prompt := Rect2(position + Vector2(-box_w * 0.5, -14), Vector2(box_w, 30))
+	draw_rect(Rect2(prompt.position + Vector2(3, 4), prompt.size), Color(0.0, 0.0, 0.0, 0.22), true)
+	draw_rect(prompt, Color(void_color, 0.92), true)
+	draw_line(prompt.position, prompt.position + Vector2(prompt.size.x, 0), accent, 1.5)
+	draw_string(ui_font, prompt.position + Vector2(15, 20), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, paper_color)
+
+func draw_foil_reflector(cell: Vector2i) -> void:
+	var p := iso_to_screen(Vector2(cell) + Vector2(0.5, 0.5))
+	draw_shadow(p, 15.0, 0.3)
+	var glitter := Color("d8e2ec")
+	var sheet := PackedVector2Array([
+		p + Vector2(-13, -3),
+		p + Vector2(10, -9),
+		p + Vector2(15, 2),
+		p + Vector2(-9, 8),
+	])
+	draw_colored_polygon(sheet, muted_color.lightened(0.3))
+	draw_polyline(PackedVector2Array([sheet[0], sheet[1], sheet[2], sheet[3], sheet[0]]), Color("ffffff", 0.75), 1.2, true)
+	var sparkle := 0.5 + 0.5 * sin(elapsed * 7.0 + float(cell.x) * 2.0)
+	draw_line(p + Vector2(-5, -4), p + Vector2(0, -1), Color(glitter, sparkle), 1.2)
+	draw_line(p + Vector2(2, -1), p + Vector2(9, -5), Color(glitter, sparkle * 0.7), 1.0)
+	draw_line(p + Vector2(-8, 3), p + Vector2(-1, 2), Color(glitter, sparkle * 0.5), 1.0)
+
+func draw_dropped_receiver() -> void:
+	var position := iso_to_screen(receiver_position)
+	draw_shadow(position, 16.0, 0.3)
+	var bob := sin(elapsed * 3.0) * 2.0
+	var c := position + Vector2(0, -9 + bob)
+	draw_line(c + Vector2(0, -1), c + Vector2(0, -20 - bob), ink_color, 1.6)
+	draw_circle(c + Vector2(0, -22 - bob), 1.8, danger_color)
+	var box := PackedVector2Array([
+		c + Vector2(-12, 8),
+		c + Vector2(12, 8),
+		c + Vector2(14, -6),
+		c + Vector2(-14, -6),
+	])
+	draw_colored_polygon(box, gate_color.darkened(0.1))
+	draw_colored_polygon(PackedVector2Array([box[0], box[1], Vector2(12, -2), Vector2(-12, -2)]), gate_color)
+	draw_polyline(PackedVector2Array([box[0], box[1], box[2], box[3], box[0]]), ink_color, 1.3, true)
+	draw_circle(c + Vector2(-6, 0), 2.6, safe_color)
+	draw_circle(c + Vector2(6, 0), 2.6, danger_color)
+	if player_position.distance_to(receiver_position) <= 0.85:
+		draw_dropped_prompt(position, "RADIO RECEIVER", accent_color)
+
+func draw_held_receiver() -> void:
+	var base := iso_to_screen(player_position)
+	var c := base + Vector2(0, -46)
+	draw_line(c, c + Vector2(0, -18), ink_color, 1.5)
+	draw_circle(c + Vector2(0, -20), 1.6, danger_color)
+	draw_colored_polygon(PackedVector2Array([
+		c + Vector2(-7, 4),
+		c + Vector2(7, 4),
+		c + Vector2(8, -4),
+		c + Vector2(-8, -4),
+	]), gate_color.darkened(0.05))
+	draw_circle(c + Vector2(-3, 0), 1.8, safe_color)
+	draw_circle(c + Vector2(3, 0), 1.8, danger_color)
+	var ping := 0.5 + 0.5 * sin(elapsed * 6.0)
+	draw_arc(c + Vector2(0, -20), 8.0 + ping * 6.0, 0.0, TAU, 12, Color(safe_color, ping * 0.55), 1.2, true)
+
+func draw_foil_sheet(center: Vector2) -> void:
+	var sheet := PackedVector2Array([
+		center + Vector2(-9, -6),
+		center + Vector2(7, -10),
+		center + Vector2(11, 0),
+		center + Vector2(-5, 6),
+	])
+	draw_colored_polygon(sheet, muted_color.lightened(0.32))
+	draw_polyline(PackedVector2Array([sheet[0], sheet[1], sheet[2], sheet[3], sheet[0]]), Color("ffffff", 0.8), 1.2, true)
+	draw_line(center + Vector2(-4, -4), center + Vector2(2, -1), Color("ffffff", 0.9), 1.0)
+	draw_line(center + Vector2(1, -5), center + Vector2(7, -2), Color("ffffff", 0.6), 1.0)
+
+func draw_helicopter() -> void:
+	if level_theme != "radio_jungle" or not signal_sent:
+		return
+	var progress := helicopter_progress()
+	var target := iso_to_screen(rope_position()) + Vector2(0.0, -175.0)
+	var eased := 1.0 - pow(1.0 - progress, 3.0)
+	var position := Vector2(target.x - 560.0 + eased * 560.0, target.y + sin(elapsed * 2.1) * 3.0)
+	var spin := elapsed * 36.0
+	draw_line(position + Vector2(-32, -26) + Vector2(cos(spin), sin(spin)) * 6.0, position + Vector2(32, -26) + Vector2(-cos(spin), -sin(spin)) * 6.0, Color("9db4c8", 0.8), 3.0)
+	draw_line(position + Vector2(0, -26), position + Vector2(0, -20), Color("3c4a5a"), 2.0)
+	draw_line(position + Vector2(-6, -6), position + Vector2(-44, -10), Color("d8cfc0"), 5.0)
+	draw_line(position + Vector2(-44, -10), position + Vector2(-52, -6), Color("a89f92"), 3.0)
+	var cabin := PackedVector2Array([
+		position + Vector2(-16, -22),
+		position + Vector2(18, -22),
+		position + Vector2(24, -6),
+		position + Vector2(0, -4),
+		position + Vector2(-22, -5),
+	])
+	draw_colored_polygon(cabin, danger_color.darkened(0.14))
+	draw_colored_polygon(PackedVector2Array([cabin[0], cabin[1], cabin[2], cabin[4]]), danger_color.lightened(0.06))
+	draw_polyline(PackedVector2Array([cabin[0], cabin[1], cabin[2], cabin[3], cabin[4], cabin[0]]), ink_color, 1.4, true)
+	draw_colored_polygon(PackedVector2Array([position + Vector2(-10, -19), position + Vector2(5, -19), position + Vector2(9, -9), position + Vector2(-6, -9)]), Color(paper_color, 0.75))
+	draw_line(position + Vector2(-16, -2), position + Vector2(-14, 4), ink_color, 2.0)
+	draw_line(position + Vector2(22, -2), position + Vector2(20, 4), ink_color, 2.0)
+	draw_line(position + Vector2(-20, 5), position + Vector2(24, 5), ink_color, 2.4)
+	var blink := 0.5 + 0.5 * sin(elapsed * 8.0)
+	draw_circle(position + Vector2(0, -28), 2.5 + blink, Color(accent_color, 0.9))
+	if progress >= 1.0:
+		var rope_bottom := iso_to_screen(rope_position())
+		draw_line(position + Vector2(0, 5), rope_bottom, Color("cfc6b8"), 1.6)
+		var hook := rope_bottom + Vector2(0, -8)
+		draw_line(hook, hook + Vector2(-5, 0), ink_color, 2.0)
+		draw_line(hook, hook + Vector2(5, 0), ink_color, 2.0)
+		if player_position.distance_to(rope_position()) <= 0.85:
+			draw_action_prompt(rope_bottom + Vector2(0, -34), "ENTER TO GRAB THE ROPE", safe_color)
+
 func draw_shadow(position: Vector2, radius: float, alpha: float) -> void:
 	draw_colored_polygon(PackedVector2Array([
 		position + Vector2(-radius, 0),
@@ -4736,8 +5132,12 @@ func draw_level_select(viewport: Vector2) -> void:
 		draw_string(ui_font, row.position + Vector2(62, 27), "%02d" % index, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, row_color)
 		draw_string(ui_font, row.position + Vector2(112, 31), String(level["name"]), HORIZONTAL_ALIGNMENT_LEFT, -1, 22, paper_color if selected else muted_color)
 		var jungle_level := surface_level and String(level.get("theme", "")) == "jungle"
-		var detail := "JUNGLE" if jungle_level else ("RIVER CROSSING" if surface_level else enemy_display_name(String(level["enemy_kind"])))
-		var summary := "WATERFALL  •  EXPLORE" if jungle_level else ("BOTTLES  •  CRAFT  •  RIVER" if surface_level else "3 SHARDS  •  5 ENEMIES")
+		var radio_level := surface_level and String(level.get("theme", "")) == "radio_jungle"
+		var night_level := surface_level and String(level.get("theme", "")) == "night_jungle"
+		var surface_detail := "NIGHT JUNGLE STATION" if radio_level else ("JUNGLE" if jungle_level else ("NIGHT JUNGLE" if night_level else "RIVER CROSSING"))
+		var surface_summary := "RADIO  •  FOIL  •  CALL FOR HELP" if radio_level else ("WATERFALL  •  EXPLORE" if jungle_level else ("FIRE MASHAL  •  CROSS" if night_level else "BOTTLES  •  CRAFT  •  RIVER"))
+		var detail := surface_detail if surface_level else enemy_display_name(String(level["enemy_kind"]))
+		var summary := surface_summary if surface_level else "3 SHARDS  •  5 ENEMIES"
 		draw_string(ui_font, row.position + Vector2(112, 52), detail, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, row_color if selected else muted_color)
 		draw_string(ui_font, row.position + Vector2(600, 40), summary, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, row_color if selected else muted_color)
 	var list_height := LEVEL_VISIBLE * LEVEL_ROW_H + (LEVEL_VISIBLE - 1) * LEVEL_ROW_GAP
@@ -4927,13 +5327,16 @@ func draw_hud(viewport: Vector2) -> void:
 		draw_drop_select(viewport)
 		return
 	draw_plaque(Rect2(30, 24, 330, 76), accent_color)
-	var title := "RIVER RUN" if level_kind == "surface" else "FACETED DEPTHS"
+	var title := level_name if level_kind == "surface" else "FACETED DEPTHS"
 	draw_string(ui_font, Vector2(50, 57), title, HORIZONTAL_ALIGNMENT_LEFT, -1, 30, paper_color)
 	var level_text := "LEVEL 00 / %02d  •  %s" % [LEVELS.size(), level_name] if level_kind == "surface" else "DEPTH %02d / %02d  •  %s" % [level_index, LEVELS.size() - 1, level_name]
 	draw_string(ui_font, Vector2(51, 83), level_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, accent_color)
 	var shard_rect := Rect2(viewport.x - 244, 24, 214, 100) if level_kind == "surface" else Rect2(viewport.x - 244, 24, 214, 76)
 	if level_kind == "surface":
-		draw_bottle_plaque(shard_rect)
+		if level_theme == "radio_jungle":
+			draw_radio_plaque(Rect2(viewport.x - 254, 24, 224, 118))
+		else:
+			draw_bottle_plaque(shard_rect)
 	else:
 		draw_plaque(shard_rect, safe_color)
 		draw_string(ui_font, shard_rect.position + Vector2(18, 26), "LIGHT SHARDS", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, muted_color)
@@ -4965,6 +5368,23 @@ func draw_hud(viewport: Vector2) -> void:
 		draw_restart_confirm(viewport)
 	if paused:
 		draw_pause_overlay(viewport)
+
+func draw_radio_plaque(rect: Rect2) -> void:
+	draw_plaque(rect, safe_color)
+	draw_string(ui_font, rect.position + Vector2(18, 28), "RADIO STATION", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, muted_color)
+	var receiver_ready := has_radio_receiver and active_weapon == "radio_receiver"
+	var receiver_label := "RECEIVER READY" if receiver_ready else ("RECEIVER CARRIED" if has_radio_receiver else "NO RECEIVER")
+	var receiver_color := safe_color if receiver_ready else (accent_color if has_radio_receiver else muted_color)
+	draw_string(ui_font, rect.position + Vector2(18, 52), receiver_label, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, receiver_color)
+	draw_string(ui_font, rect.position + Vector2(134, 52), "FOIL %02d" % int(item_inventory.get("aluminum foil", 0)), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, accent_color)
+	draw_string(ui_font, rect.position + Vector2(18, 74), "SIGNAL %02d%%" % int(round(radio_strength() * 100.0)), HORIZONTAL_ALIGNMENT_LEFT, -1, 13, paper_color)
+	var signal_level := radio_strength()
+	var bar := Rect2(rect.position + Vector2(18, 84), Vector2(188, 14))
+	draw_rect(bar, Color(void_color, 0.9), true)
+	draw_rect(Rect2(bar.position, Vector2(bar.size.x * signal_level, bar.size.y)), safe_color if signal_level >= RADIO_RECEIVE_THRESHOLD else accent_color)
+	draw_line(bar.position, bar.position + Vector2(bar.size.x, 0), Color(muted_color, 0.5), 1.0)
+	if signal_sent:
+		draw_string(ui_font, rect.position + Vector2(18, 116), "SIGNAL SENT — HELICOPTER INBOUND", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, safe_color)
 
 func draw_bottle_plaque(rect: Rect2) -> void:
 	draw_plaque(rect, safe_color)
