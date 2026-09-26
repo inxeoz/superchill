@@ -252,6 +252,9 @@ func run_test() -> void:
 	if not validate_drop_select():
 		quit(1)
 		return
+	if not validate_throw_item():
+		quit(1)
+		return
 	if not validate_shotgun():
 		quit(1)
 		return
@@ -1083,6 +1086,105 @@ func validate_drop_select() -> bool:
 		return false
 	game.confirm_drop_selection()
 	return game.state == "playing" and not game.has_life_jacket and game.life_jacket_on_ground and game.has_fishing_catcher and game.has_sword
+
+func press_key(code: int) -> void:
+	var event := InputEventKey.new()
+	event.physical_keycode = code
+	event.keycode = code
+	event.pressed = true
+	game._unhandled_input(event)
+
+func find_valid_throw_cell() -> Vector2i:
+	var origin: Vector2i = game.cell_at(game.player_position)
+	for radius in range(1, int(game.THROW_PLACE_RANGE) + 1):
+		for dy in range(-radius, radius + 1):
+			for dx in range(-radius, radius + 1):
+				var cell := origin + Vector2i(dx, dy)
+				if game.throw_target_valid(cell):
+					return cell
+	return Vector2i(-1, -1)
+
+func throw_entry_index(kind: String, gear: bool) -> int:
+	var entries: Array = game.throw_entries()
+	for index in range(entries.size()):
+		if String(entries[index]["kind"]) == kind and bool(entries[index]["gear"]) == gear:
+			return index
+	return -1
+
+func validate_throw_item() -> bool:
+	game.load_level(0)
+	game.item_inventory["leaves"] = 3
+	game.item_inventory["pebble"] = 1
+	game.bottle_count = 2
+	game.has_life_jacket = true
+	# N opens the throw list with both loose items and worn gear.
+	press_key(KEY_N)
+	if game.state != "throw_select":
+		return false
+	var leaves_index := throw_entry_index("leaves", false)
+	var pebble_index := throw_entry_index("pebble", false)
+	var bottle_index := throw_entry_index("empty bottle", false)
+	var jacket_index := throw_entry_index("life_jacket", true)
+	if leaves_index < 0 or pebble_index < 0 or bottle_index < 0 or jacket_index < 0:
+		return false
+	# Choosing an item drops into aim mode with the cursor on the player's tile.
+	game.throw_selected = leaves_index
+	press_key(KEY_ENTER)
+	if game.state != "throw_aim":
+		return false
+	if game.throw_target_cell != game.cell_at(game.player_position):
+		return false
+	# The cursor steps with the movement keys, camera-relative: yawing with Q/E
+	# changes which cell a key selects so the cursor tracks the player's view.
+	game.camera_angle = 0.0
+	game.throw_target_cell = game.cell_at(game.player_position)
+	press_key(KEY_RIGHT)
+	var straight_step: Vector2i = game.throw_target_cell - game.cell_at(game.player_position)
+	if straight_step == Vector2i.ZERO:
+		return false
+	game.camera_angle = PI * 0.5
+	game.throw_target_cell = game.cell_at(game.player_position)
+	press_key(KEY_RIGHT)
+	var turned_step: Vector2i = game.throw_target_cell - game.cell_at(game.player_position)
+	if turned_step == Vector2i.ZERO or turned_step == straight_step:
+		return false
+	game.camera_angle = 0.0
+	# Throwing onto solid/out-of-range ground is refused.
+	game.throw_target_cell = game.cell_at(game.player_position) + Vector2i(100, 100)
+	game.throw_item_at_target()
+	if game.state != "throw_aim" or int(game.item_inventory["leaves"]) != 3:
+		return false
+	# A valid landing spot consumes one leaf and drops it there.
+	var landing := find_valid_throw_cell()
+	if landing.x < 0:
+		return false
+	game.throw_target_cell = landing
+	game.throw_item_at_target()
+	if game.state != "playing" or int(game.item_inventory["leaves"]) != 2:
+		return false
+	var dropped: Dictionary = game.litter[game.litter.size() - 1]
+	if String(dropped["kind"]) != "leaves" or not dropped["position"].is_equal_approx(Vector2(landing) + Vector2(0.5, 0.5)):
+		return false
+	# Worn gear can be thrown too: it leaves the body and lands on the tile.
+	press_key(KEY_N)
+	if game.state != "throw_select":
+		return false
+	game.throw_selected = throw_entry_index("life_jacket", true)
+	press_key(KEY_ENTER)
+	if game.state != "throw_aim" or game.throw_selected < 0:
+		return false
+	game.throw_target_cell = find_valid_throw_cell()
+	game.throw_item_at_target()
+	if game.state != "playing" or game.has_life_jacket or not game.life_jacket_on_ground:
+		return false
+	if not game.life_jacket_position.is_equal_approx(Vector2(game.throw_target_cell) + Vector2(0.5, 0.5)):
+		return false
+	# ESC backs out of the list without throwing anything.
+	press_key(KEY_N)
+	if game.state != "throw_select":
+		return false
+	press_key(KEY_ESCAPE)
+	return game.state == "playing"
 
 func validate_wall_faces() -> bool:
 	game.camera_angle = PI * 0.5

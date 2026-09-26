@@ -1269,6 +1269,8 @@ var dug_cells: Dictionary = {}
 var active_weapon := "sword"
 var drop_selected := 0
 var drop_gear_ids: Array = []
+var throw_selected := 0
+var throw_target_cell := Vector2i.ZERO
 var craft_selected := 0
 var pickup_selected := 0
 var recipe_index := 0
@@ -1322,6 +1324,7 @@ const THROW_CHARGE_TIME := 1.1
 const THROW_MIN_RANGE := 2.0
 const THROW_MAX_RANGE := 8.0
 const NOISE_LURE_TIME := 12.0
+const THROW_PLACE_RANGE := 6.0
 const RADIO_RANGE := 2.6
 const RADIO_FOIL_BOOST := 0.55
 const RADIO_FOIL_DIST := 4.0
@@ -2009,6 +2012,7 @@ func _process(delta: float) -> void:
 			update_enemies(delta)
 			collect_shards()
 		update_camera(delta)
+	if state == "playing" or state == "throw_aim":
 		if Input.is_physical_key_pressed(KEY_Q):
 			camera_angle = wrapf(camera_angle + CAMERA_ROTATE_RATE * delta, -PI, PI)
 		elif Input.is_physical_key_pressed(KEY_E):
@@ -3562,6 +3566,150 @@ func close_drop_select() -> void:
 	state = "playing"
 	message_timer = 0.0
 
+# --- Throw / place any carried item -----------------------------------------
+# N opens every item held (loose litter kinds plus worn gear). After choosing
+# one, a green tile cursor steps around the map to pick the landing spot.
+func throw_entries() -> Array:
+	var entries: Array = []
+	for kind in ITEM_ORDER:
+		var kind_str := String(kind)
+		if _gear_worn(kind_str):
+			continue
+		var count := inventory_count(kind_str)
+		if count > 0:
+			entries.append({"kind": kind_str, "count": count, "gear": false})
+	for kind in item_inventory.keys():
+		var extra := String(kind)
+		if ITEM_ORDER.has(extra) or _gear_worn(extra):
+			continue
+		var extra_count := int(item_inventory[extra])
+		if extra_count > 0:
+			entries.append({"kind": extra, "count": extra_count, "gear": false})
+	if bottle_count > 0:
+		entries.append({"kind": "empty bottle", "count": bottle_count, "gear": false})
+	for id in _worn_gear_ids():
+		entries.append({"kind": String(id), "count": 1, "gear": true})
+	return entries
+
+func open_throw_select() -> void:
+	if state != "playing":
+		return
+	var entries := throw_entries()
+	if entries.is_empty():
+		message = "Nothing to throw"
+		message_timer = 2.0
+		return
+	throw_selected = 0
+	state = "throw_select"
+	message_timer = 0.0
+	_sfx("menu_open")
+
+func close_throw_select() -> void:
+	if state != "throw_select" and state != "throw_aim":
+		return
+	state = "playing"
+	message_timer = 0.0
+
+func confirm_throw_selection() -> void:
+	if state != "throw_select":
+		return
+	state = "throw_aim"
+	throw_target_cell = cell_at(player_position)
+	_sfx("menu_confirm")
+
+func throw_selected_entry() -> Dictionary:
+	var entries := throw_entries()
+	if entries.is_empty():
+		return {}
+	return entries[clampi(throw_selected, 0, entries.size() - 1)]
+
+func throw_target_valid(cell: Vector2i) -> bool:
+	if not walkable.has(cell) or water_cells.has(cell) or solid_cells.has(cell):
+		return false
+	return Vector2(cell_at(player_position)).distance_to(Vector2(cell)) <= THROW_PLACE_RANGE
+
+func move_throw_target(direction: Vector2i) -> void:
+	var next := throw_target_cell + direction
+	if Vector2(cell_at(player_position)).distance_to(Vector2(next)) > THROW_PLACE_RANGE:
+		return
+	throw_target_cell = next
+	_sfx("menu_move")
+
+func move_throw_target_input(screen_input: Vector2) -> void:
+	# Pick the cell step whose on-screen direction best matches the key, so the
+	# cursor keeps following the player's view as the camera yaws with Q/E.
+	if screen_input == Vector2.ZERO:
+		return
+	var best := Vector2i.ZERO
+	var best_score := -INF
+	for direction: Vector2i in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+		var world := Vector2(direction).rotated(camera_angle)
+		var screen := Vector2(
+			(world.x - world.y) * TILE_WIDTH * 0.5,
+			(world.x + world.y) * TILE_HEIGHT * 0.5
+		)
+		var score := screen.normalized().dot(screen_input.normalized())
+		if score > best_score:
+			best_score = score
+			best = direction
+	if best != Vector2i.ZERO:
+		move_throw_target(best)
+
+func throw_item_at_target() -> void:
+	if state != "throw_aim":
+		return
+	if not throw_target_valid(throw_target_cell):
+		message = "Can't throw it there"
+		message_timer = 1.6
+		_sfx("craft_fail")
+		return
+	var entry := throw_selected_entry()
+	if entry.is_empty():
+		state = "playing"
+		return
+	var kind := String(entry["kind"])
+	var landing := Vector2(throw_target_cell) + Vector2(0.5, 0.5)
+	if bool(entry["gear"]):
+		_throw_gear_at(kind, throw_target_cell)
+		message = "You throw the " + _gear_label(kind)
+	elif kind == "empty bottle":
+		bottle_count = maxi(0, bottle_count - 1)
+		litter.append({"kind": kind, "position": landing, "phase": float(litter.size()) * 1.1})
+		message = "You throw an empty bottle"
+	else:
+		consume_inventory(kind, 1)
+		litter.append({"kind": kind, "position": landing, "phase": float(litter.size()) * 1.1})
+		message = "You throw the " + kind
+	message_timer = 2.2
+	spawn_burst(landing, accent_color, 8)
+	add_shake(0.12)
+	_sfx("pickup")
+	state = "playing"
+
+func _throw_gear_at(id: String, cell: Vector2i) -> void:
+	var landing := Vector2(cell) + Vector2(0.5, 0.5)
+	_drop_gear(id)
+	match id:
+		"life_jacket":
+			life_jacket_position = landing
+		"fishing_catcher":
+			fishing_catcher_position = landing
+		"sword":
+			sword_position = landing
+		"shotgun":
+			if shotgun_drops.size() > 0:
+				shotgun_drops[shotgun_drops.size() - 1] = landing
+		"axe":
+			axe_position = landing
+		"boat":
+			boat_position = landing
+		"shovel":
+			shovel_position = landing
+		"fire_mashal":
+			fire_mashal_position = landing
+		"radio_receiver":
+			receiver_position = landing
+
 func station_position() -> Vector2:
 	return Vector2(station_cell) + Vector2(0.5, 0.5)
 
@@ -3825,6 +3973,33 @@ func _unhandled_input(event: InputEvent) -> void:
 				confirm_restart()
 			elif keycode == KEY_ESCAPE:
 				close_restart_confirm()
+		elif state == "throw_select":
+			var throw_entry_count := throw_entries().size()
+			if keycode == KEY_UP or keycode == KEY_W or keycode == KEY_LEFT or keycode == KEY_A:
+				if throw_entry_count > 0:
+					throw_selected = posmod(throw_selected - 1, throw_entry_count)
+					_sfx("menu_move")
+			elif keycode == KEY_DOWN or keycode == KEY_S or keycode == KEY_RIGHT or keycode == KEY_D:
+				if throw_entry_count > 0:
+					throw_selected = posmod(throw_selected + 1, throw_entry_count)
+					_sfx("menu_move")
+			elif keycode == KEY_ENTER or keycode == KEY_KP_ENTER or keycode == KEY_SPACE:
+				confirm_throw_selection()
+			elif keycode == KEY_ESCAPE or keycode == KEY_N or keycode == KEY_B:
+				close_throw_select()
+		elif state == "throw_aim":
+			if keycode == KEY_UP or keycode == KEY_W:
+				move_throw_target_input(Vector2(0, -1))
+			elif keycode == KEY_DOWN or keycode == KEY_S:
+				move_throw_target_input(Vector2(0, 1))
+			elif keycode == KEY_LEFT or keycode == KEY_A:
+				move_throw_target_input(Vector2(-1, 0))
+			elif keycode == KEY_RIGHT or keycode == KEY_D:
+				move_throw_target_input(Vector2(1, 0))
+			elif keycode == KEY_ENTER or keycode == KEY_KP_ENTER or keycode == KEY_SPACE:
+				throw_item_at_target()
+			elif keycode == KEY_ESCAPE or keycode == KEY_N or keycode == KEY_B:
+				close_throw_select()
 		elif state == "drop_select":
 			if drop_gear_ids.size() > 0:
 				if keycode == KEY_UP or keycode == KEY_W:
@@ -3848,6 +4023,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				open_craft_table()
 			elif keycode == KEY_G:
 				handle_gear_key()
+			elif keycode == KEY_N and state == "playing":
+				open_throw_select()
 			elif keycode == KEY_T and level_theme == GRASSLAND_THEME:
 				begin_noise_throw()
 			elif keycode == KEY_ENTER or keycode == KEY_KP_ENTER:
@@ -3922,6 +4099,9 @@ func _draw() -> void:
 	draw_atmosphere(viewport)
 	draw_set_transform(CAMERA_PIVOT + camera_offset + screen_shake, 0.0, Vector2(camera_zoom, camera_zoom))
 	draw_floors()
+	draw_enemy_ranges()
+	if state == "throw_aim":
+		draw_throw_cursor()
 	draw_depth_sorted()
 	draw_effects()
 	draw_helicopter()
@@ -5186,6 +5366,16 @@ func draw_storm_overlay(viewport: Vector2) -> void:
 func noise_world_to_screen(world_position: Vector2) -> Vector2:
 	return CAMERA_PIVOT + camera_offset + screen_shake + iso_to_screen(world_position) * camera_zoom
 
+func draw_throw_cursor() -> void:
+	var valid := throw_target_valid(throw_target_cell)
+	var color := safe_color if valid else danger_color
+	var pulse := 0.5 + sin(elapsed * 6.0) * 0.5
+	var poly := tile_polygon(throw_target_cell)
+	draw_colored_polygon(poly, Color(color, 0.22 + pulse * 0.24))
+	var edge := PackedVector2Array([poly[0], poly[1], poly[2], poly[3], poly[0]])
+	for index in range(4):
+		draw_line(edge[index], edge[index + 1], Color(color, 0.9), 2.5)
+
 # Aim reticle while charging a throw, and the ringing noise once it lands.
 func draw_noise_maker(_viewport: Vector2) -> void:
 	if level_theme != GRASSLAND_THEME:
@@ -5745,8 +5935,6 @@ func draw_enemy(index: int) -> void:
 		# the fight reads clearly even through the storm.
 		var pulse := 5.0 + sin(elapsed * 4.0 + float(enemy["phase"])) * 2.0
 		draw_circle(position + Vector2(0, -16), 22.0 + pulse, Color(danger_color, 0.15))
-	if String(enemy["kind"]) == "roamer" or String(enemy["kind"]) == "ambusher":
-		draw_beast_range(enemy)
 	match String(enemy["kind"]):
 		"mireling":
 			draw_mireling(enemy, position, bob)
@@ -5762,6 +5950,14 @@ func draw_enemy(index: int) -> void:
 			draw_beast(enemy, position, bob, true)
 		_:
 			draw_shardling(enemy, position, bob)
+
+func draw_enemy_ranges() -> void:
+	# Painted on the floor, before depth sorting, so trees and units occlude it.
+	for enemy in enemies:
+		if not hyena_revealed(enemy):
+			continue
+		if String(enemy["kind"]) == "roamer" or String(enemy["kind"]) == "ambusher":
+			draw_beast_range(enemy)
 
 func draw_beast_range(enemy: Dictionary) -> void:
 	# Tint every tile the beast can sense from its post: a red diamond per
@@ -6416,6 +6612,56 @@ func craft_element_label(element_index: int) -> String:
 		return "EMPTY BOTTLES"
 	return String(ITEM_LABELS.get(craft_element_kind(element_index), "ITEMS"))
 
+func draw_throw_select(viewport: Vector2) -> void:
+	draw_rect(Rect2(Vector2.ZERO, viewport), Color(void_color, 0.82), true)
+	var panel := Rect2(300, 150, 680, 340)
+	draw_rect(Rect2(panel.position + Vector2(7, 9), panel.size), Color(0.0, 0.0, 0.0, 0.34), true)
+	draw_rect(panel, Color(void_color, 0.98), true)
+	draw_line(panel.position, panel.position + Vector2(panel.size.x, 0), safe_color, 2.0)
+	draw_line(panel.position + Vector2(0, panel.size.y), panel.position + panel.size, Color(safe_color, 0.35), 1.0)
+	draw_string(ui_font, Vector2(0, 104), "THROW ITEM", HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 40, paper_color)
+	draw_string(ui_font, Vector2(0, 138), "Pick anything you carry, then choose where it lands", HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 16, muted_color)
+	var entries := throw_entries()
+	# ponytail: fixed 2x12 grid; add scrolling if carried kinds ever exceed 24.
+	for index in range(mini(entries.size(), 24)):
+		var entry: Dictionary = entries[index]
+		var selected := index == throw_selected
+		var column := index / 12
+		var row := index % 12
+		var rect := Rect2(330 + column * 330, 172 + row * 26, 310, 22)
+		var row_color := accent_color if selected else safe_color
+		draw_rect(rect, Color(void_color, 0.98) if selected else Color(ink_color, 0.96), true)
+		draw_line(rect.position, rect.position + Vector2(rect.size.x, 0), row_color if selected else Color(muted_color, 0.3), 2.0 if selected else 1.0)
+		if bool(entry["gear"]):
+			draw_hud_diamond(rect.position + Vector2(13, 11), 6.0, row_color)
+		else:
+			draw_item_icon(String(entry["kind"]), rect.position + Vector2(13, 11))
+		draw_string(ui_font, rect.position + Vector2(28, 16), _throw_entry_label(entry), HORIZONTAL_ALIGNMENT_LEFT, -1, 13, paper_color if selected else muted_color)
+		if int(entry["count"]) > 1:
+			draw_string(ui_font, rect.position + Vector2(0, 16), "×%d" % int(entry["count"]), HORIZONTAL_ALIGNMENT_RIGHT, rect.size.x - 10, 12, row_color)
+	draw_string(ui_font, Vector2(0, 512), "W / S / A / D select     ENTER / SPACE choose     ESC / N close", HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 14, muted_color)
+
+func _throw_entry_label(entry: Dictionary) -> String:
+	var kind := String(entry["kind"])
+	if bool(entry["gear"]):
+		return _gear_label(kind)
+	return material_label(kind, int(entry["count"]))
+
+func draw_throw_aim_hint(viewport: Vector2) -> void:
+	var entry := throw_selected_entry()
+	if entry.is_empty():
+		return
+	var target_screen := noise_world_to_screen(Vector2(throw_target_cell) + Vector2(0.5, 0.5))
+	var valid := throw_target_valid(throw_target_cell)
+	var color := safe_color if valid else danger_color
+	var label := _throw_entry_label(entry)
+	draw_string(ui_font, target_screen + Vector2(-60, -26), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, color)
+	var hint := "MOVE WASD     Q / E ROTATE     ENTER / SPACE THROW     ESC / N CANCEL"
+	var size := ui_font.get_string_size(hint, HORIZONTAL_ALIGNMENT_LEFT, -1, 13)
+	var rect := Rect2(viewport.x * 0.5 - size.x * 0.5 - 18, viewport.y - 88, size.x + 36, 30)
+	draw_plaque(rect, color)
+	draw_string(ui_font, rect.position + Vector2(18, 20), hint, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted_color)
+
 func draw_pickup_select(viewport: Vector2) -> void:
 	draw_rect(Rect2(Vector2.ZERO, viewport), Color(void_color, 0.82), true)
 	var panel := Rect2(330, 150, 620, 340)
@@ -6593,6 +6839,9 @@ func draw_hud(viewport: Vector2) -> void:
 	if state == "pickup_select":
 		draw_pickup_select(viewport)
 		return
+	if state == "throw_select":
+		draw_throw_select(viewport)
+		return
 	if state == "crafting":
 		draw_craft_table(viewport)
 		return
@@ -6632,9 +6881,9 @@ func draw_hud(viewport: Vector2) -> void:
 			draw_hud_diamond(center, 10.0, danger_color.lightened(0.08))
 		else:
 			draw_hud_diamond(center, 10.0, Color(muted_color, 0.2))
-	var controls := "WASD MOVE  SHIFT RUN  SPACE JUMP  ENTER STRIKE  F SEARCH/PICK  B TABLE  G WEAR/DROP  L LEVELS  P PAUSE  R RESTART" if level_kind == "surface" else "WASD MOVE  ENTER STRIKE  G PICK/DROP  DRAG PAN  WHEEL ZOOM  Q/E YAW  C RESET  L LEVELS  P PAUSE  R RESTART"
+	var controls := "WASD MOVE  SHIFT RUN  SPACE JUMP  ENTER STRIKE  F SEARCH/PICK  B TABLE  G WEAR/DROP  N THROW  L LEVELS  P PAUSE  R RESTART" if level_kind == "surface" else "WASD MOVE  ENTER STRIKE  G PICK/DROP  N THROW  DRAG PAN  WHEEL ZOOM  Q/E YAW  C RESET  L LEVELS  P PAUSE  R RESTART"
 	if level_theme == GRASSLAND_THEME:
-		controls = "WASD MOVE  ENTER STRIKE  F SEARCH/PICK  B TABLE  T THROW NOISE MAKER  L LEVELS  P PAUSE  R RESTART"
+		controls = "WASD MOVE  ENTER STRIKE  F SEARCH/PICK  B TABLE  T THROW NOISE MAKER  N THROW ITEM  L LEVELS  P PAUSE  R RESTART"
 	var controls_size := ui_font.get_string_size(controls, HORIZONTAL_ALIGNMENT_LEFT, -1, 13)
 	var controls_rect := Rect2(viewport.x - controls_size.x - 68, viewport.y - 54, controls_size.x + 38, 30)
 	draw_plaque(controls_rect, slate_light_color)
@@ -6645,6 +6894,8 @@ func draw_hud(viewport: Vector2) -> void:
 		draw_state_overlay(viewport)
 	if state == "restart_confirm":
 		draw_restart_confirm(viewport)
+	if state == "throw_aim":
+		draw_throw_aim_hint(viewport)
 	if paused:
 		draw_pause_overlay(viewport)
 
