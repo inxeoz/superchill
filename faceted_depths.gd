@@ -1231,6 +1231,10 @@ const STORM_VISIBILITY_BASE := 2.2
 const STORM_GOGGLE_BOOST := 3.0
 const STORM_LOST_ALPHA := 0.85
 const STORM_GOGGLE_ALPHA := 0.26
+# The killing storm that guards the desert exit: a fixed band of tiles the
+# player cannot see through (or survive) without the goggles.
+const STORM_GATE_MIN := Vector2i(24, 1)
+const STORM_GATE_MAX := Vector2i(28, 5)
 const HUNT_LINGER_TIME := 6.0
 const HYENA_SNIFF_RANGE := 6.5
 const HYENA_ROAM_SPEED := 0.7
@@ -1982,9 +1986,10 @@ func update_enemies(delta: float) -> void:
 		if distance < 0.72:
 			if float(enemy["attack_cooldown"]) <= 0.0:
 				enemy["attack_cooldown"] = 0.9
-				# A blind player bitten by the storm pack dies without warning;
-				# with goggles on the bite is just a wound.
-				if level_theme == "desert_storm" and not goggles_on():
+				# In the gate storm there is no fight to be had: the blind
+				# player is killed. Everywhere else the bite is a normal wound,
+				# so the player can trade blows and either win or die.
+				if gate_storm_blind():
 					storm_slay()
 				else:
 					hurt_player()
@@ -2259,24 +2264,39 @@ func storm_darkness() -> float:
 		return 0.0
 	return STORM_LOST_ALPHA if not goggles_on() else STORM_GOGGLE_ALPHA
 
+# The tile band just before the desert exit. Crossing it blind means no
+# visibility and a pack that strikes to kill.
+func in_gate_storm(position: Vector2) -> bool:
+	if level_theme != "desert_storm":
+		return false
+	var cell := cell_at(position)
+	return cell.x >= STORM_GATE_MIN.x and cell.x <= STORM_GATE_MAX.x and cell.y >= STORM_GATE_MIN.y and cell.y <= STORM_GATE_MAX.y
+
+func gate_storm_blind() -> bool:
+	return in_gate_storm(player_position) and not goggles_on()
+
 func storm_visibility_radius() -> float:
+	if gate_storm_blind():
+		return 0.0
 	return STORM_VISIBILITY_BASE * (STORM_GOGGLE_BOOST if goggles_on() else 1.0)
 
-# Hyenas only enter the player's sight when the desert goggles are worn:
-# by default they stay outside the user's visibility, hidden by the storm.
-# Seen ones appear only inside the (3x) goggle sight pool.
+# Hyenas prowl visibly once they are inside the player's sight pool: like a
+# revealed spirit, a nearby hyena becomes a fightable target. The desert
+# goggles widen that pool by STORM_GOGGLE_BOOST (3x), so distant hyenas stay
+# hidden in the storm while a close one can always be seen and fought.
 func hyena_revealed(enemy: Dictionary) -> bool:
 	if level_theme != "desert_storm":
 		return true
-	return goggles_on() and player_position.distance_to(enemy["position"]) <= storm_visibility_radius()
+	return player_position.distance_to(enemy["position"]) <= storm_visibility_radius()
 
-# A hyena that reaches a blinded player strikes unseen and kills outright.
+# In the gate storm a blind player is caught by the pack and killed outright:
+# the goggles are the only way through.
 func storm_slay() -> void:
 	if state != "playing":
 		return
 	health = 0
 	state = "lost"
-	message = "A hyena struck you unseen — the storm hid it until it was too late"
+	message = "The gate storm swallowed you — the hyenas strike unseen"
 	message_timer = 99.0
 	spawn_burst(player_position, danger_color, 12)
 	add_shake(0.6)
@@ -2787,7 +2807,35 @@ func recipes_for_item(kind: String) -> Array:
 
 
 func refresh_recipe_index() -> void:
+	var usages := recipes_for_item(selected_build_kind())
+	if usages.is_empty():
+		recipe_index = -1
+		return
+	# Prefer the first craftable recipe, but fall back to the first listed one
+	# when everything for this item is already built (so the UI reads "BUILT").
 	recipe_index = recipe_for_build_kind(selected_build_kind())
+	if recipe_index < 0:
+		recipe_index = int(usages[0])
+
+# When one item feeds several recipes, let the player cycle which one ENTER
+# builds (e.g. wood -> fire mashal, then camp fire).
+func cycle_craft_recipe(step: int) -> void:
+	var usages := recipes_for_item(selected_build_kind())
+	if usages.size() <= 1:
+		return
+	var current := usages.find(recipe_index)
+	if current < 0:
+		current = 0
+	recipe_index = int(usages[posmod(current + step, usages.size())])
+	_sfx("menu_move")
+
+# Jump straight to the Nth recipe listed for the selected item (1-based keys).
+func select_craft_recipe_index(index: int) -> void:
+	var usages := recipes_for_item(selected_build_kind())
+	if index < 0 or index >= usages.size():
+		return
+	recipe_index = int(usages[index])
+	_sfx("menu_move")
 
 func inventory_count(kind: String) -> int:
 	if kind == "bottles":
@@ -2829,7 +2877,10 @@ func missing_counts_label(missing: Dictionary) -> String:
 func build_selected() -> void:
 	if state != "crafting":
 		return
-	refresh_recipe_index()
+	# Keep a manually picked recipe; only fall back to the auto pick when the
+	# current one no longer fits the selected item.
+	if not recipes_for_item(selected_build_kind()).has(recipe_index):
+		refresh_recipe_index()
 	if recipe_index < 0:
 		message = "You don't know how to use this yet — explore more"
 		message_timer = 2.4
@@ -3399,6 +3450,12 @@ func _unhandled_input(event: InputEvent) -> void:
 					craft_selected = posmod(craft_selected + 1, craft_visible_count)
 					refresh_recipe_index()
 					_sfx("menu_move")
+			elif keycode == KEY_LEFT or keycode == KEY_A:
+				cycle_craft_recipe(-1)
+			elif keycode == KEY_RIGHT or keycode == KEY_D:
+				cycle_craft_recipe(1)
+			elif keycode >= KEY_1 and keycode <= KEY_9:
+				select_craft_recipe_index(keycode - KEY_1)
 			elif keycode == KEY_SPACE or keycode == KEY_ENTER or keycode == KEY_KP_ENTER:
 				build_selected()
 			elif keycode == KEY_E and life_jacket_on_ground:
@@ -4656,6 +4713,22 @@ func draw_storm_overlay(viewport: Vector2) -> void:
 		if alpha <= 0.004:
 			continue
 		draw_arc(center, r, 0.0, TAU, 48, Color(shade, alpha), step + 1.0, true)
+	# The gate storm is a denser wall of sand guarding the exit band, so the
+	# player can feel it before they can see through it.
+	var base := CAMERA_PIVOT + camera_offset + screen_shake
+	var zone := PackedVector2Array()
+	for corner in [
+		Vector2(STORM_GATE_MIN.x, STORM_GATE_MIN.y),
+		Vector2(STORM_GATE_MAX.x + 1, STORM_GATE_MIN.y),
+		Vector2(STORM_GATE_MAX.x + 1, STORM_GATE_MAX.y + 1),
+		Vector2(STORM_GATE_MIN.x, STORM_GATE_MAX.y + 1),
+	]:
+		zone.append(base + iso_to_screen(corner) * camera_zoom)
+	draw_colored_polygon(zone, Color(shade, 0.55 if not goggles_on() else 0.32))
+	for index in range(7):
+		var lane := float(index) / 6.0
+		var edge := zone[3].lerp(zone[2], lane)
+		draw_line(edge, edge + Vector2(90.0, 16.0), Color(paper_color, 0.14), 1.8)
 	# Spirits burn through the storm as beacons so the player can always
 	# find them, even far outside the sight pool.
 	for spirit in spirits:
@@ -4674,6 +4747,9 @@ func draw_storm_overlay(viewport: Vector2) -> void:
 		if mid.distance_to(center) < clear_radius + 70.0:
 			continue
 		draw_line(Vector2(x, y), Vector2(x + 120.0, y + 18.0), Color(paper_color, 0.12), 2.0)
+	# Blind inside the gate storm: the sand is total, nothing shows through.
+	if gate_storm_blind():
+		draw_rect(Rect2(Vector2.ZERO, viewport), Color(shade, 0.98), true)
 
 func draw_surface_exit() -> void:
 	var position := iso_to_screen(Vector2(exit_cell) + Vector2(0.5, 0.5))
@@ -5207,6 +5283,11 @@ func draw_enemy(index: int) -> void:
 		return
 	var position := iso_to_screen(enemy["position"])
 	var bob := sin(elapsed * 5.0 + float(enemy["phase"])) * 3.0
+	if String(enemy["kind"]) == "hyena":
+		# A revealed hyena burns a pulsing danger halo, like a spirit beacon:
+		# the fight reads clearly even through the storm.
+		var pulse := 5.0 + sin(elapsed * 4.0 + float(enemy["phase"])) * 2.0
+		draw_circle(position + Vector2(0, -16), 22.0 + pulse, Color(danger_color, 0.15))
 	match String(enemy["kind"]):
 		"mireling":
 			draw_mireling(enemy, position, bob)
@@ -5924,17 +6005,22 @@ func draw_craft_table(viewport: Vector2) -> void:
 		# Stack every recipe's ingredients on their own line so nothing clips.
 		for idx in range(usages.size()):
 			var recipe_i: int = usages[idx]
+			var chosen := recipe_i == recipe_index
 			var needs := recipe_needs(recipe_i)
 			var first := true
 			for kind in needs:
 				var need: int = needs[String(kind)]
 				var label := material_label(String(kind), need)
 				var line := (str(idx + 1) + ".  " if first else "      ") + label + " x" + str(need)
+				if first and chosen and usages.size() > 1:
+					draw_hud_diamond(Vector2(px - 12, py - 4), 4.0, accent_color)
 				first = false
-				draw_string(ui_font, Vector2(px, py), line, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, paper_color)
+				draw_string(ui_font, Vector2(px, py), line, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, accent_color if chosen else muted_color)
 				py += 22
 		py += 8
-		var sel_recipe := recipe_for_build_kind(sel_kind)
+		if usages.size() > 1:
+			py = draw_wrapped_text("A/D OR 1-9 PICKS THE BUILD", Vector2(px, py), 270.0, 11, muted_color) + 6
+		var sel_recipe := recipe_index
 		var sel_missing := missing_recipe_counts(sel_recipe)
 		if recipe_built(sel_recipe):
 			var built_text := String(RECIPES[sel_recipe]["name"]) + " — BUILT"
@@ -5942,7 +6028,7 @@ func draw_craft_table(viewport: Vector2) -> void:
 				built_text = String(RECIPES[sel_recipe]["name"]) + " — WEARING (G TO DROP)"
 			draw_string(ui_font, Vector2(px, py), built_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, safe_color)
 		elif sel_missing.is_empty():
-			draw_string(ui_font, Vector2(px, py), "PRESS ENTER TO BUILD", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, paper_color)
+			draw_string(ui_font, Vector2(px, py), "ENTER TO BUILD " + String(RECIPES[sel_recipe]["name"]), HORIZONTAL_ALIGNMENT_LEFT, -1, 13, paper_color)
 		else:
 			draw_wrapped_text("NEED " + missing_counts_label(sel_missing), Vector2(px, py), 270.0, 13, accent_color)
 	if message_timer > 0.0:
@@ -5950,6 +6036,8 @@ func draw_craft_table(viewport: Vector2) -> void:
 	var controls_rect := Rect2(300, 574, 680, 56)
 	draw_plaque(controls_rect, slate_light_color)
 	var controls_text := String("W/S SELECT ITEM     ENTER BUILD     B/ESC CLOSE")
+	if recipes_for_item(sel_kind).size() > 1:
+		controls_text = "W/S SELECT ITEM     1-9 PICK RECIPE     ENTER BUILD     B/ESC CLOSE"
 	if life_jacket_on_ground:
 		controls_text = "E EQUIP     " + controls_text
 	draw_string(ui_font, Vector2(0, 608), controls_text, HORIZONTAL_ALIGNMENT_CENTER, viewport.x, 13, muted_color)
@@ -6037,7 +6125,16 @@ func draw_storm_plaque(rect: Rect2) -> void:
 	draw_line(rect.position + Vector2(26, 58), rect.position + Vector2(42, 58), accent_color if goggles_on else Color(muted_color, 0.35), 3.0)
 	draw_string(ui_font, rect.position + Vector2(52, 63), "GOGGLES ON — 3x VISIBILITY" if goggles_on else "BLINDED — CRAFT GOGGLES", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, accent_color if goggles_on else muted_color)
 	draw_line(rect.position + Vector2(18, 78), rect.position + Vector2(rect.size.x - 18, 78), Color(muted_color, 0.4), 1.0)
-	draw_string(ui_font, rect.position + Vector2(18, 95), "STORM HIDES HYENAS", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, muted_color)
+	var footer := "STORM HIDES HYENAS"
+	var footer_color := muted_color
+	if in_gate_storm(player_position):
+		if goggles_on():
+			footer = "GATE STORM — GOGGLES BLOCK IT"
+			footer_color = safe_color
+		else:
+			footer = "GATE STORM — BLIND, TURN BACK"
+			footer_color = danger_color
+	draw_string(ui_font, rect.position + Vector2(18, 95), footer, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, footer_color)
 
 func draw_bottle_plaque(rect: Rect2) -> void:
 	draw_plaque(rect, safe_color)

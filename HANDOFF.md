@@ -39,6 +39,16 @@ Screenshots exist at `screenshots/desert_storm_{blind,goggles,beacon}.png`.
 - **Spirits burn beacons through the storm** (drawn on top of the overlay) so they are
   always findable: pulsing accent glow + bright core.
 
+### Gate storm (guards the exit)
+- A fixed lethal band just before the exit: `STORM_GATE_MIN (24,1)` .. `STORM_GATE_MAX
+  (28,5)`. The exit cell (28,1) sits inside it.
+- `in_gate_storm(pos)` / `gate_storm_blind()` (in zone + no goggles).
+- Blind inside it: `storm_visibility_radius()` -> 0 (total blackout, `draw_storm_overlay`
+  fills the viewport), and any hyena bite calls `storm_slay()` = instant death. The
+  goggles are the only way through.
+- The band is drawn as a denser wall of sand even with goggles (passable, still visible).
+- The STORM VISION HUD plaque switches its footer to a gate-storm warning in the zone.
+
 ### Desert Goggles
 - Recipe id `desert_goggles`: `cloth` x2 + `metal scrap` x1 + `wine glass` x1.
 - Gated by the three material spirits via `MATERIAL_IDEAS` / `MATERIAL_SPIRITS`
@@ -46,12 +56,13 @@ Screenshots exist at `screenshots/desert_storm_{blind,goggles,beacon}.png`.
 - Craft -> `has_desert_goggles = true`. Passive/worn on the face (drawn on the player),
   NOT main gear, NOT droppable. Sword stays active so you can fight.
 - Without goggles:
-  - Sight pool is tiny (2.2 tiles); hyenas are NEVER revealed (stay hidden in storm at
-    any distance — `hyena_revealed()` requires `goggles_on()` + distance <= pool).
-  - Sword swings pass through hidden hyenas.
-  - Any hyena bite = instant death (`storm_slay`).
-- With goggles: hyenas become visible inside the 3x pool, fightable (3 HP, sword),
-  and their bites are normal 1-damage wounds.
+  - Sight pool is tiny (2.2 tiles); a hyena inside the pool is revealed and
+    fightable (`hyena_revealed()` = distance <= pool, goggles NOT required).
+    Hyenas outside the pool stay hidden in the storm.
+  - A revealed hyena is a normal fight: sword (3 HP), and its bite is 1 wound.
+  - A swing at a still-hidden (out-of-pool) hyena passes through it.
+- With goggles: the pool triples, so hyenas are revealed from much farther and
+  stay fightable (3 HP, sword); bites are normal 1-damage wounds.
 
 ### Hyena AI (6 hyenas)
 - Spawned >= 6 tiles from the start: (2,2) (12,1) (27,4) (26,9) (5,2) (24,12).
@@ -84,7 +95,11 @@ Screenshots exist at `screenshots/desert_storm_{blind,goggles,beacon}.png`.
   The desert overlay instead uses `CAMERA_PIVOT + camera_offset + screen_shake + iso_to_screen(...) * camera_zoom`
   which is the actual on-screen player position. The night-jungle pool may be drawn at
   the wrong place on screen — pre-existing, not touched this session.
-- Blind play is intentionally brutal (hidden insta-kill pack). Balance knobs:
+- A revealed hyena draws a pulsing danger halo (spirit-beacon style) so the
+  fight reads clearly through the storm. Ordinary bites are wounds: the player can
+  win or die. The only exception is inside the gate storm while blind, where a bite
+  is the lethal `storm_slay()` (see "Gate storm").
+- Blind play is intentionally brutal (hidden pack outside the small pool). Balance knobs:
   `HUNT_LINGER_TIME`, `HYENA_SNIFF_RANGE`, `HYENA_ROAM_SPEED`, chase ramp/factor, hyena count.
 - Hyenas roam into walls can briefly stall (new roam target only re-picked on arrival);
   acceptable with sparse boulders.

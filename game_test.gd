@@ -368,8 +368,8 @@ func validate_desert_level() -> bool:
 	game.item_inventory["wine glass"] = 1
 	if not game.recipes_for_item("cloth").is_empty() or game.recipe_for_build_kind("cloth") != -1:
 		return false
-	# By default the storm keeps hyenas out of the user's visibility: no
-	# goggles, no hyena sight anywhere.
+	# The storm reveals a hyena only once it is inside the sight pool: a
+	# nearby hyena becomes a visible, fightable target even without goggles.
 	if game.has_desert_goggles or game.goggles_on():
 		return false
 	if game.storm_visibility_radius() != game.STORM_VISIBILITY_BASE:
@@ -384,20 +384,30 @@ func validate_desert_level() -> bool:
 		"phase": 0.0,
 		"chase": 0.0,
 	}
+	# Far outside the tiny pool the storm still hides it.
 	if game.hyena_revealed(far_hyena):
 		return false
 	var near_hyena: Dictionary = far_hyena.duplicate()
-	near_hyena["position"] = game.player_position + Vector2(0.5, 0.0)
-	if game.hyena_revealed(near_hyena):
+	near_hyena["position"] = game.player_position + game.player_facing * 0.8
+	near_hyena["health"] = 1
+	if not game.hyena_revealed(near_hyena):
 		return false
-	# A blind player's sword cannot touch the hidden pack.
+	# The revealed hyena can be fought and killed with the sword.
 	game.enemies.clear()
 	game.enemies.append(near_hyena)
 	game.attack_cooldown = 0.0
 	game.attack()
+	if game.enemies.size() != 0:
+		return false
+	# The hidden far hyena is still untouchable by the swing.
+	game.enemies.clear()
+	game.enemies.append(far_hyena)
+	game.attack_cooldown = 0.0
+	game.attack()
 	if game.enemies.size() != 1:
 		return false
-	# And a pack bite while blind is still an unseen instant death.
+	# A revealed bite is an ordinary wound: the player can win the fight or
+	# be worn down and die.
 	game.enemies.clear()
 	game.enemies.append({
 		"position": game.player_position + Vector2(0.4, 0.0),
@@ -409,10 +419,48 @@ func validate_desert_level() -> bool:
 		"phase": 0.0,
 		"chase": 0.0,
 	})
+	var blind_health_before: int = game.health
 	game.update_enemies(0.1)
+	if game.state != "playing" or game.health != blind_health_before - 1:
+		return false
+	var bites := 0
+	while game.state == "playing" and bites < 12:
+		game.invulnerability = 0.0
+		game.enemies[0]["attack_cooldown"] = 0.0
+		game.update_enemies(0.1)
+		bites += 1
 	if game.state != "lost" or game.health != 0:
 		return false
 	# The exit stays hidden while blinded.
+	game.load_level(desert_index)
+	# The gate storm guards the exit band: blind inside it there is no
+	# visibility at all, and a bite there kills outright.
+	var gate_cell := Vector2i((game.STORM_GATE_MIN.x + game.STORM_GATE_MAX.x) / 2, (game.STORM_GATE_MIN.y + game.STORM_GATE_MAX.y) / 2)
+	if game.in_gate_storm(Vector2(game.start_cell) + Vector2(0.5, 0.5)):
+		return false
+	if not game.in_gate_storm(Vector2(game.exit_cell) + Vector2(0.5, 0.5)):
+		return false
+	if not game.in_gate_storm(Vector2(gate_cell) + Vector2(0.5, 0.5)):
+		return false
+	game.player_position = Vector2(gate_cell) + Vector2(0.5, 0.5)
+	if not game.gate_storm_blind() or game.storm_visibility_radius() != 0.0:
+		return false
+	game.enemies.clear()
+	game.enemies.append({
+		"position": game.player_position + Vector2(0.3, 0.0),
+		"kind": "hyena",
+		"health": 3,
+		"speed": 1.0,
+		"hit_flash": 0.0,
+		"attack_cooldown": 0.0,
+		"phase": 0.0,
+		"chase": 0.0,
+	})
+	if game.hyena_revealed(game.enemies[0]):
+		return false
+	game.update_enemies(0.1)
+	if game.state != "lost" or game.health != 0:
+		return false
 	game.load_level(desert_index)
 	game.player_position = Vector2(game.exit_cell) + Vector2(0.5, 0.5)
 	game.update_surface_level()
@@ -447,6 +495,27 @@ func validate_desert_level() -> bool:
 	game.build_selected()
 	if not game.has_desert_goggles or game.state != "playing" or game.active_weapon != "sword":
 		return false
+	# With goggles the gate storm is passable: visibility returns and a bite
+	# is an ordinary wound, not an execution.
+	game.player_position = Vector2(gate_cell) + Vector2(0.5, 0.5)
+	if game.gate_storm_blind() or game.storm_visibility_radius() <= 0.0:
+		return false
+	game.enemies.clear()
+	game.enemies.append({
+		"position": game.player_position + Vector2(0.3, 0.0),
+		"kind": "hyena",
+		"health": 3,
+		"speed": 1.0,
+		"hit_flash": 0.0,
+		"attack_cooldown": 0.0,
+		"phase": 0.0,
+		"chase": 0.0,
+	})
+	var goggle_health: int = game.health
+	game.update_enemies(0.1)
+	if game.state != "playing" or game.health != goggle_health - 1:
+		return false
+	game.invulnerability = 0.0
 	if int(game.item_inventory.get("cloth", 0)) != 0 or int(game.item_inventory.get("metal scrap", 0)) != 0 or int(game.item_inventory.get("wine glass", 0)) != 0:
 		return false
 	# The goggles triple the sight pool and reveal the storm hyenas.
@@ -1135,6 +1204,32 @@ func validate_surface_level() -> bool:
 		return false
 	game.build_selected()
 	if not game.has_fishing_catcher or game.state != "playing":
+		return false
+	if int(game.item_inventory.get("rope", 0)) != 0 or game.bottle_count != 0:
+		return false
+	# One item, many recipes: the player picks which build ENTER makes.
+	game.load_level(0)
+	game.unlocked_ideas["life_jacket"] = true
+	game.unlocked_ideas["fishing_catcher"] = true
+	game.bottle_count = 1
+	game.item_inventory["rope"] = 1
+	game.open_craft_table()
+	game.craft_selected = 0  # empty bottles feed two recipes
+	game.refresh_recipe_index()
+	if game.recipe_index != game.recipe_index_for_id("life_jacket"):
+		return false
+	# Cycle to the second listed build.
+	game.cycle_craft_recipe(1)
+	if game.recipe_index != game.recipe_index_for_id("fishing_catcher"):
+		return false
+	# Number keys jump straight to a listed build.
+	game.select_craft_recipe_index(0)
+	if game.recipe_index != game.recipe_index_for_id("life_jacket"):
+		return false
+	# Build the picked catcher to prove the picker drives the craft.
+	game.select_craft_recipe_index(1)
+	game.build_selected()
+	if not game.has_fishing_catcher or game.has_life_jacket or game.state != "playing":
 		return false
 	if int(game.item_inventory.get("rope", 0)) != 0 or game.bottle_count != 0:
 		return false
