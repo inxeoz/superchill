@@ -4921,7 +4921,7 @@ func draw_dropped_receiver() -> void:
 		c + Vector2(-14, -6),
 	])
 	draw_colored_polygon(box, gate_color.darkened(0.1))
-	draw_colored_polygon(PackedVector2Array([box[0], box[1], Vector2(12, -2), Vector2(-12, -2)]), gate_color)
+	draw_colored_polygon(PackedVector2Array([box[0], box[1], c + Vector2(12, -2), c + Vector2(-12, -2)]), gate_color)
 	draw_polyline(PackedVector2Array([box[0], box[1], box[2], box[3], box[0]]), ink_color, 1.3, true)
 	draw_circle(c + Vector2(-6, 0), 2.6, safe_color)
 	draw_circle(c + Vector2(6, 0), 2.6, danger_color)
