@@ -35,6 +35,7 @@ const ITEM_PHRASES := {
 	"metal scrap": "a piece of metal scrap",
 	"wine glass": "a wine glass",
 	"fish": "a river fish",
+	"noise maker": "a noise maker",
 }
 const ITEM_PLURALS := {
 	"leaves": "leaves",
@@ -53,6 +54,7 @@ const ITEM_PLURALS := {
 	"metal scrap": "pieces of metal scrap",
 	"wine glass": "wine glasses",
 	"fish": "river fish",
+	"noise maker": "noise makers",
 }
 const DEFAULT_CAMERA_ZOOM := 1.08
 const CAMERA_ZOOM_MIN := 0.55
@@ -5558,7 +5560,8 @@ func draw_noise_maker(_viewport: Vector2) -> void:
 	if noise_timer > 0.0:
 		var noise_screen := noise_world_to_screen(noise_position)
 		var fade := clampf(noise_timer / NOISE_LURE_TIME, 0.0, 1.0)
-		draw_circle(noise_screen, 6.0, Color(accent_color, 0.85))
+		# The device stays put in the same shape it always has — it just rings.
+		draw_noise_maker_device(noise_screen + Vector2(0, -4))
 		for ring in range(3):
 			var ripple := fposmod(elapsed * 0.9 + float(ring) / 3.0, 1.0)
 			draw_arc(noise_screen, 12.0 + ripple * 46.0, 0.0, TAU, 28, Color(accent_color, (1.0 - ripple) * 0.5 * fade), 2.0, true)

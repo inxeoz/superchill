@@ -350,6 +350,13 @@ func validate_sandbox_level() -> bool:
 	# The noise-maker device is staged on the ground with its own sprite.
 	if not game.litter.any(func(item): return String(item["kind"]) == "noise maker"):
 		return false
+	# Picking it up needs a phrase entry too (pick_litter_kind reads ITEM_PHRASES).
+	for item in game.litter:
+		if String(item["kind"]) == "noise maker":
+			game.player_position = item["position"]
+			break
+	if game.pick_litter_kind("noise maker") != 1:
+		return false
 	# The craftable gear is staged on the ground for pickup.
 	for id in ["life_jacket", "fishing_catcher", "boat", "fire_mashal", "radio_receiver", "axe", "shovel"]:
 		if not game._gear_on_ground(id):
