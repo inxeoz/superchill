@@ -273,6 +273,10 @@ func run_test() -> void:
 	if not validate_throw_item():
 		quit(1)
 		return
+	print("DBG before noise_lure")
+	if not validate_noise_lure():
+		quit(1)
+		return
 	print("DBG before shotgun")
 	if not validate_shotgun():
 		quit(1)
@@ -1258,6 +1262,63 @@ func validate_throw_item() -> bool:
 		return false
 	press_key(KEY_ESCAPE)
 	return game.state == "playing"
+
+func validate_noise_lure() -> bool:
+	# A noise maker thrown in an ordinary level (not just grassland) rings and
+	# pulls nearby animals and enemies to the sound instead of the player.
+	game.load_level(1)
+	var noise_cell: Vector2i = game.exit_cell
+	var noise_center := Vector2(noise_cell) + Vector2(0.5, 0.5)
+	var lure_flow: Dictionary = game.build_flow_from(noise_cell)
+	var enemy_cell := Vector2i(-1, -1)
+	for cell: Vector2i in game.walkable:
+		if cell == game.start_cell or not lure_flow.has(cell):
+			continue
+		if Vector2(cell).distance_to(Vector2(game.start_cell)) > 2.5:
+			enemy_cell = cell
+			break
+	if enemy_cell.x < 0:
+		return false
+	game.enemies.clear()
+	game.enemies.append({
+		"position": Vector2(enemy_cell) + Vector2(0.5, 0.5),
+		"kind": "shardling",
+		"health": 2,
+		"speed": 1.45,
+		"hit_flash": 0.0,
+		"attack_cooldown": 0.0,
+		"phase": 0.0,
+		"chase": 0.0,
+		"mode": "roam",
+		"roam_target": Vector2.ZERO,
+	})
+	game.trigger_noise(noise_center)
+	if game.noise_timer <= 0.0 or game.noise_flow.is_empty():
+		return false
+	var before: Vector2 = game.enemies[0]["position"]
+	for step in range(20):
+		game.update_enemies(0.1)
+	var after: Vector2 = game.enemies[0]["position"]
+	if after.distance_to(before) < 0.4:
+		return false
+	if after.distance_to(noise_center) >= before.distance_to(noise_center):
+		return false
+	# The lure ticks down in an ordinary level, then releases the enemy.
+	game.update_noise(game.NOISE_LURE_TIME + 0.1)
+	if game.noise_timer > 0.0 or not game.noise_flow.is_empty():
+		return false
+	# Throwing it with N rings the lure without consuming the reusable device.
+	game.load_level(1)
+	game.item_inventory["noise maker"] = 1
+	game.state = "throw_aim"
+	game.throw_selected = throw_entry_index("noise maker", false)
+	if game.throw_selected < 0:
+		return false
+	game.throw_target_cell = game.cell_at(game.player_position)
+	game.throw_item_at_target()
+	if int(game.item_inventory.get("noise maker", 0)) != 1 or game.noise_timer <= 0.0:
+		return false
+	return true
 
 func validate_wall_faces() -> bool:
 	game.camera_angle = PI * 0.5

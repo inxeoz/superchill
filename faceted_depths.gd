@@ -2113,12 +2113,11 @@ func _process(delta: float) -> void:
 			player_linger = minf(HUNT_LINGER_TIME, player_linger + delta)
 		player_frame_last = player_position
 		update_player(delta)
+		update_noise(delta)
 		if level_kind == "surface":
 			update_surface_level()
 			update_drowning(delta)
 			update_night_darkness(delta)
-			if level_theme == "grassland":
-				update_noise(delta)
 			if level_theme == "desert_storm" or level_theme == "grassland":
 				update_enemies(delta)
 		else:
@@ -2290,6 +2289,10 @@ func update_enemies(delta: float) -> void:
 		# bleed it off too.
 		var hyena_mode := String(enemy.get("mode", "roam"))
 		if is_hyena:
+			if hyena_mode == "lured":
+				# The rattle is gone: back to its own routine, then re-detect.
+				hyena_mode = "roam"
+				enemy["mode"] = "roam"
 			if hyena_mode == "roam" and distance <= HYENA_SNIFF_RANGE:
 				hyena_mode = "hunt"
 				enemy["mode"] = "hunt"
@@ -2316,6 +2319,12 @@ func update_enemies(delta: float) -> void:
 					storm_slay()
 				else:
 					hurt_player()
+			continue
+		# A ringing noise maker outranks the hunt: every animal heads for the
+		# sound until the rattle dies, then resumes its normal behaviour.
+		if noise_timer > 0.0 and not noise_flow.is_empty():
+			enemy["mode"] = "lured"
+			move_along_flow(enemy, noise_flow, float(enemy["speed"]) * 1.4, delta)
 			continue
 		if is_hyena and hyena_mode == "roam":
 			var roam: Vector2 = enemy.get("roam_target", Vector2.ZERO)
@@ -2656,12 +2665,12 @@ func goggles_on() -> bool:
 
 # --- Distract the monster: noise maker throw -------------------------------
 func update_noise(delta: float) -> void:
-	if level_theme != GRASSLAND_THEME:
-		return
 	if throwing_noise:
 		throw_charge = minf(1.0, throw_charge + delta / THROW_CHARGE_TIME)
 	if noise_timer > 0.0:
 		noise_timer = maxf(0.0, noise_timer - delta)
+		if noise_timer <= 0.0:
+			noise_flow.clear()
 
 func noise_throw_distance() -> float:
 	return lerpf(THROW_MIN_RANGE, THROW_MAX_RANGE, clampf(throw_charge, 0.0, 1.0))
@@ -2686,6 +2695,17 @@ func noise_throw_target() -> Vector2:
 func has_noise_maker_item() -> bool:
 	return int(item_inventory.get("noise maker", 0)) > 0
 
+# Ring the rattle at a landed spot: animals and enemies within earshot head for
+# it until the lure dies. Reused by the charged grassland throw and the normal
+# item throw, so it works in any level.
+func trigger_noise(target: Vector2) -> void:
+	noise_position = target
+	noise_timer = NOISE_LURE_TIME
+	noise_flow = build_flow_from(cell_at(target))
+	spawn_burst(target, accent_color, 14)
+	add_shake(0.28)
+	_sfx("spirit")
+
 func begin_noise_throw() -> void:
 	if state != "playing" or not has_noise_maker_item() or throwing_noise:
 		return
@@ -2703,12 +2723,7 @@ func release_noise_throw() -> void:
 		return
 	var target := noise_throw_target()
 	throw_charge = 0.0
-	noise_position = target
-	noise_timer = NOISE_LURE_TIME
-	noise_flow = build_flow_from(cell_at(target))
-	spawn_burst(target, accent_color, 14)
-	add_shake(0.28)
-	_sfx("spirit")
+	trigger_noise(target)
 	message = "The rattle sounds — the beasts turn toward the noise (T to throw again)"
 	message_timer = 2.6
 
@@ -3795,6 +3810,11 @@ func throw_item_at_target() -> void:
 		bottle_count = maxi(0, bottle_count - 1)
 		litter.append({"kind": kind, "position": landing, "phase": float(litter.size()) * 1.1})
 		message = "You throw an empty bottle"
+	elif kind == "noise maker":
+		# A reusable lure: it rings where it lands and stays in hand, so it can
+		# pull animals and enemies away from the player again and again.
+		trigger_noise(landing)
+		message = "The rattle sounds — animals and enemies turn toward it"
 	else:
 		consume_inventory(kind, 1)
 		litter.append({"kind": kind, "position": landing, "phase": float(litter.size()) * 1.1})
@@ -5525,8 +5545,6 @@ func draw_throw_cursor() -> void:
 
 # Aim reticle while charging a throw, and the ringing noise once it lands.
 func draw_noise_maker(_viewport: Vector2) -> void:
-	if level_theme != GRASSLAND_THEME:
-		return
 	var player_screen := noise_world_to_screen(player_position)
 	if throwing_noise and has_noise_maker_item():
 		var target := noise_throw_target()
